@@ -49,6 +49,7 @@ export class VirtualKeyboard {
   private minimizedButton: HTMLElement | null = null;
   private isMultilineMode = false;  // Multi-line input mode
   private inputArea: HTMLTextAreaElement | null = null;
+  private isComposing = false;  // Track IME composition state
 
   constructor(container: HTMLElement, terminal: TerminalManager, onLogout: () => void) {
     this.container = container;
@@ -320,10 +321,23 @@ export class VirtualKeyboard {
     this.inputArea.className = 'command-input';
     this.inputArea.placeholder = 'Enter command...';
     this.inputArea.rows = 1;
+    this.inputArea.setAttribute('autocomplete', 'off');
+    this.inputArea.setAttribute('autocorrect', 'off');
+    this.inputArea.setAttribute('autocapitalize', 'off');
+    this.inputArea.setAttribute('spellcheck', 'false');
+    
+    // Handle IME composition events
+    this.inputArea.addEventListener('compositionstart', () => {
+      this.isComposing = true;
+    });
+    
+    this.inputArea.addEventListener('compositionend', () => {
+      this.isComposing = false;
+    });
     
     // Handle Enter key
     this.inputArea.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && !this.isComposing) {
         if (!this.isMultilineMode) {
           e.preventDefault();
           this.sendInputCommand();
