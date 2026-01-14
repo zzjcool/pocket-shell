@@ -39,8 +39,14 @@ export class VirtualKeyboard {
   private ctrlActive = false;
   private altActive = false;
   private isDragging = false;
+  private isDraggingMinimized = false;  // Separate state for minimized button drag
+  private hasDragged = false;  // Track if actual movement occurred
   private dragStartY = 0;
+  private dragStartX = 0;
   private dragStartBottom = 0;
+  private dragStartRight = 0;
+  private isMinimized = false;
+  private minimizedButton: HTMLElement | null = null;
 
   constructor(container: HTMLElement, terminal: TerminalManager, onLogout: () => void) {
     this.container = container;
@@ -49,6 +55,139 @@ export class VirtualKeyboard {
     this.render();
     this.setupDrag();
     this.setupInputInterceptor();
+    this.setupGlobalDragListeners();
+  }
+
+  private setupGlobalDragListeners() {
+    // Global mouse/touch listeners for minimized button drag
+    document.addEventListener('mousemove', (e) => {
+      if (this.isDraggingMinimized && this.isMinimized && this.minimizedButton) {
+        e.preventDefault();
+        this.handleMinimizedDragMove(e.clientX, e.clientY);
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (this.isMinimized && this.isDraggingMinimized) {
+        this.handleMinimizedDragEnd();
+      }
+    });
+
+    document.addEventListener('touchmove', (e) => {
+      if (this.isDraggingMinimized && this.isMinimized && this.minimizedButton) {
+        e.preventDefault();
+        this.handleMinimizedDragMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    }, { passive: false });
+
+    document.addEventListener('touchend', () => {
+      if (this.isMinimized && this.isDraggingMinimized) {
+        this.handleMinimizedDragEnd();
+      }
+    });
+  }
+
+  private handleMinimizedDragMove(clientX: number, clientY: number) {
+    if (!this.minimizedButton) return;
+    
+    const deltaY = this.dragStartY - clientY;
+    const deltaX = this.dragStartX - clientX;
+    
+    // Check if actually moved (more than 5px)
+    if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+      this.hasDragged = true;
+    }
+    
+    const newBottom = Math.max(10, Math.min(
+      window.innerHeight - 60,
+      this.dragStartBottom + deltaY
+    ));
+    const newRight = Math.max(10, Math.min(
+      window.innerWidth - 60,
+      this.dragStartRight + deltaX
+    ));
+    
+    this.minimizedButton.style.bottom = `${newBottom}px`;
+    this.minimizedButton.style.right = `${newRight}px`;
+  }
+
+  private handleMinimizedDragEnd() {
+    if (!this.minimizedButton) return;
+    
+    this.minimizedButton.classList.remove('dragging');
+    this.isDraggingMinimized = false;
+    
+    // If it was just a click (no movement), restore the keyboard
+    if (!this.hasDragged) {
+      this.restore();
+    }
+    // If dragged, just leave it where it is
+  }
+
+  private minimize() {
+    this.isMinimized = true;
+    this.container.style.display = 'none';
+    
+    // Create minimized button
+    this.minimizedButton = document.createElement('div');
+    this.minimizedButton.className = 'keyboard-minimized';
+    this.minimizedButton.title = '展开工具栏';
+    
+    // Position at same bottom as keyboard was
+    const computedStyle = getComputedStyle(this.container);
+    const bottom = parseInt(computedStyle.bottom) || 10;
+    this.minimizedButton.style.bottom = `${bottom}px`;
+    this.minimizedButton.style.right = '10px';
+    
+    // Add to parent
+    this.container.parentElement?.appendChild(this.minimizedButton);
+    
+    // Setup drag for minimized button (must be before click handler)
+    this.setupMinimizedDrag();
+  }
+
+  private restore() {
+    this.isMinimized = false;
+    
+    // Remove minimized button
+    if (this.minimizedButton) {
+      // Transfer position from minimized button to keyboard
+      const bottom = parseInt(this.minimizedButton.style.bottom) || 10;
+      this.container.style.bottom = `${bottom}px`;
+      
+      this.minimizedButton.remove();
+      this.minimizedButton = null;
+    }
+    
+    this.container.style.display = '';
+  }
+
+  private setupMinimizedDrag() {
+    if (!this.minimizedButton) return;
+    
+    const btn = this.minimizedButton;
+    
+    const onDragStart = (clientX: number, clientY: number) => {
+      this.isDraggingMinimized = true;
+      this.hasDragged = false;
+      this.dragStartY = clientY;
+      this.dragStartX = clientX;
+      this.dragStartBottom = parseInt(btn.style.bottom) || 10;
+      this.dragStartRight = parseInt(btn.style.right) || 10;
+      btn.classList.add('dragging');
+    };
+
+    // Touch events - only on button
+    btn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      onDragStart(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+
+    // Mouse events - only on button
+    btn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      onDragStart(e.clientX, e.clientY);
+    });
   }
 
   private setupInputInterceptor() {
@@ -97,7 +236,7 @@ export class VirtualKeyboard {
   }
 
   private setupDrag() {
-    const handle = this.container.querySelector('.keyboard-drag-handle') as HTMLElement;
+    const handle = this.container.querySelector('.keyboard-header') as HTMLElement;
     if (!handle) return;
 
     const onDragStart = (clientY: number) => {
@@ -159,10 +298,33 @@ export class VirtualKeyboard {
     this.container.innerHTML = '';
     this.container.className = 'virtual-keyboard';
 
+    // Header with drag handle and minimize button
+    const header = document.createElement('div');
+    header.className = 'keyboard-header';
+    
     // Drag handle
     const dragHandle = document.createElement('div');
     dragHandle.className = 'keyboard-drag-handle';
-    this.container.appendChild(dragHandle);
+    header.appendChild(dragHandle);
+    
+    // Minimize button
+    const minimizeBtn = document.createElement('button');
+    minimizeBtn.className = 'keyboard-minimize-btn';
+    minimizeBtn.innerHTML = '−';
+    minimizeBtn.title = '缩小工具栏';
+    minimizeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.minimize();
+    });
+    minimizeBtn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.minimize();
+    }, { passive: false });
+    header.appendChild(minimizeBtn);
+    
+    this.container.appendChild(header);
 
     // Quick commands row with logout button
     const quickRow = this.createRow('quick-row');

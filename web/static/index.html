@@ -170,18 +170,27 @@
       touch-action: none;
     }
 
-    /* Drag handle */
-    .keyboard-drag-handle {
+    /* Keyboard header with drag handle and minimize button */
+    .keyboard-header {
       display: flex;
       align-items: center;
       justify-content: center;
+      position: relative;
       padding: 6px 0 10px 0;
       cursor: grab;
       touch-action: none;
     }
 
-    .keyboard-drag-handle:active {
+    .keyboard-header:active {
       cursor: grabbing;
+    }
+
+    /* Drag handle */
+    .keyboard-drag-handle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
     }
 
     .keyboard-drag-handle::before {
@@ -190,6 +199,90 @@
       height: 4px;
       background: #3a3a5e;
       border-radius: 2px;
+    }
+
+    /* Minimize button */
+    .keyboard-minimize-btn {
+      position: absolute;
+      right: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 28px;
+      height: 28px;
+      background: #3a3a5e;
+      border: none;
+      border-radius: 6px;
+      color: #eaeaea;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+
+    .keyboard-minimize-btn:hover {
+      background: #4a4a6e;
+    }
+
+    .keyboard-minimize-btn:active {
+      background: #5a5a7e;
+    }
+
+    /* Minimized keyboard button */
+    .keyboard-minimized {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      background: rgba(22, 33, 62, 0.95);
+      border: 1px solid #3a3a5e;
+      border-radius: 10px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      z-index: 100;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      touch-action: none;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .keyboard-minimized::before {
+      content: '';
+      width: 20px;
+      height: 14px;
+      border: 2px solid #4ecdc4;
+      border-radius: 3px;
+      position: relative;
+    }
+
+    .keyboard-minimized::after {
+      content: '';
+      position: absolute;
+      bottom: 12px;
+      width: 12px;
+      height: 2px;
+      background: #4ecdc4;
+      border-radius: 1px;
+    }
+
+    .keyboard-minimized:hover {
+      transform: scale(1.05);
+      box-shadow: 0 6px 25px rgba(0, 0, 0, 0.5);
+      border-color: #4ecdc4;
+    }
+
+    .keyboard-minimized:active {
+      transform: scale(0.95);
+    }
+
+    .keyboard-minimized.dragging {
+      opacity: 0.9;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+      cursor: grabbing;
     }
 
     .virtual-keyboard.dragging {
