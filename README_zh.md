@@ -15,6 +15,26 @@
 - **可扩展认证** - 插件式认证架构
 - **单文件部署** - 编译为单个二进制文件，前端资源内嵌
 
+## 快速启动
+
+使用 curl:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pocketshell/pocket-shell/main/install.sh | sh
+```
+
+使用 wget:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/pocketshell/pocket-shell/main/install.sh | sh
+```
+
+安装完成后运行:
+
+```bash
+pocket-shell
+```
+
 ## 技术栈
 
 | 组件 | 技术 |

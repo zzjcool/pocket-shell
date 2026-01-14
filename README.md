@@ -15,6 +15,26 @@ A mobile-optimized web terminal that lets you use the command line smoothly on y
 - **Extensible Auth** - Plugin-based authentication architecture
 - **Single Binary** - Compile to single executable with embedded frontend
 
+## Quick Start
+
+Using curl:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pocketshell/pocket-shell/main/install.sh | sh
+```
+
+Using wget:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/pocketshell/pocket-shell/main/install.sh | sh
+```
+
+After installation, run:
+
+```bash
+pocket-shell
+```
+
 ## Tech Stack
 
 | Component | Technology |
