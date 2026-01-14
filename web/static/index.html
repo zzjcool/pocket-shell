@@ -45,6 +45,7 @@
       flex-direction: column;
       height: 100%;
       overflow: hidden;
+      position: relative;
     }
 
     /* Login View */
@@ -121,6 +122,7 @@
       flex: 1;
       min-height: 0;
       overflow: hidden;
+      height: 100%;
     }
 
     #terminal-area .xterm {
@@ -151,11 +153,48 @@
       width: 100% !important;
     }
 
-    /* Virtual Keyboard */
+    /* Virtual Keyboard - Floating draggable overlay */
     .virtual-keyboard {
-      background: #16213e;
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      right: 10px;
+      background: rgba(22, 33, 62, 0.95);
       padding: 8px;
-      border-top: 1px solid #3a3a5e;
+      border: 1px solid #3a3a5e;
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      z-index: 100;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      touch-action: none;
+    }
+
+    /* Drag handle */
+    .keyboard-drag-handle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 0 10px 0;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    .keyboard-drag-handle:active {
+      cursor: grabbing;
+    }
+
+    .keyboard-drag-handle::before {
+      content: '';
+      width: 40px;
+      height: 4px;
+      background: #3a3a5e;
+      border-radius: 2px;
+    }
+
+    .virtual-keyboard.dragging {
+      opacity: 0.9;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
     }
 
     .keyboard-row {

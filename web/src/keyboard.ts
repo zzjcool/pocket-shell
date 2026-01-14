@@ -38,17 +38,85 @@ export class VirtualKeyboard {
   private onLogout: () => void;
   private ctrlActive = false;
   private altActive = false;
+  private isDragging = false;
+  private dragStartY = 0;
+  private dragStartBottom = 0;
 
   constructor(container: HTMLElement, terminal: TerminalManager, onLogout: () => void) {
     this.container = container;
     this.terminal = terminal;
     this.onLogout = onLogout;
     this.render();
+    this.setupDrag();
+  }
+
+  private setupDrag() {
+    const handle = this.container.querySelector('.keyboard-drag-handle') as HTMLElement;
+    if (!handle) return;
+
+    const onDragStart = (clientY: number) => {
+      this.isDragging = true;
+      this.dragStartY = clientY;
+      const computedStyle = getComputedStyle(this.container);
+      this.dragStartBottom = parseInt(computedStyle.bottom) || 10;
+      this.container.classList.add('dragging');
+    };
+
+    const onDragMove = (clientY: number) => {
+      if (!this.isDragging) return;
+      const deltaY = this.dragStartY - clientY;
+      const newBottom = Math.max(0, Math.min(
+        window.innerHeight - this.container.offsetHeight - 10,
+        this.dragStartBottom + deltaY
+      ));
+      this.container.style.bottom = `${newBottom}px`;
+    };
+
+    const onDragEnd = () => {
+      if (!this.isDragging) return;
+      this.isDragging = false;
+      this.container.classList.remove('dragging');
+    };
+
+    // Touch events
+    handle.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      onDragStart(e.touches[0].clientY);
+    }, { passive: false });
+
+    document.addEventListener('touchmove', (e) => {
+      if (this.isDragging) {
+        e.preventDefault();
+        onDragMove(e.touches[0].clientY);
+      }
+    }, { passive: false });
+
+    document.addEventListener('touchend', onDragEnd);
+
+    // Mouse events
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      onDragStart(e.clientY);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (this.isDragging) {
+        e.preventDefault();
+        onDragMove(e.clientY);
+      }
+    });
+
+    document.addEventListener('mouseup', onDragEnd);
   }
 
   private render() {
     this.container.innerHTML = '';
     this.container.className = 'virtual-keyboard';
+
+    // Drag handle
+    const dragHandle = document.createElement('div');
+    dragHandle.className = 'keyboard-drag-handle';
+    this.container.appendChild(dragHandle);
 
     // Quick commands row with logout button
     const quickRow = this.createRow('quick-row');
