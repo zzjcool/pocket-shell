@@ -298,7 +298,7 @@ export class VirtualKeyboard {
     this.container.innerHTML = '';
     this.container.className = 'virtual-keyboard';
 
-    // Header with drag handle and minimize button
+    // Header with drag handle only
     const header = document.createElement('div');
     header.className = 'keyboard-header';
     
@@ -307,26 +307,9 @@ export class VirtualKeyboard {
     dragHandle.className = 'keyboard-drag-handle';
     header.appendChild(dragHandle);
     
-    // Minimize button
-    const minimizeBtn = document.createElement('button');
-    minimizeBtn.className = 'keyboard-minimize-btn';
-    minimizeBtn.innerHTML = '−';
-    minimizeBtn.title = '缩小工具栏';
-    minimizeBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.minimize();
-    });
-    minimizeBtn.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.minimize();
-    }, { passive: false });
-    header.appendChild(minimizeBtn);
-    
     this.container.appendChild(header);
 
-    // Quick commands row with logout button
+    // Quick commands row with logout button and minimize button
     const quickRow = this.createRow('quick-row');
     
     // Logout button
@@ -343,6 +326,15 @@ export class VirtualKeyboard {
       btn.classList.add('quick-btn');
       quickRow.appendChild(btn);
     });
+    
+    // Minimize button at the end of quick row
+    const minimizeBtn = this.createButton('−', () => {
+      this.minimize();
+    });
+    minimizeBtn.classList.add('minimize-btn');
+    minimizeBtn.title = '缩小工具栏';
+    quickRow.appendChild(minimizeBtn);
+    
     this.container.appendChild(quickRow);
 
     // Special keys row
