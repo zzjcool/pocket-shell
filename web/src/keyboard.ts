@@ -48,6 +48,52 @@ export class VirtualKeyboard {
     this.onLogout = onLogout;
     this.render();
     this.setupDrag();
+    this.setupInputInterceptor();
+  }
+
+  private setupInputInterceptor() {
+    this.terminal.setInputInterceptor((data: string) => {
+      // If no modifiers active, pass through unchanged
+      if (!this.ctrlActive && !this.altActive) {
+        return data;
+      }
+
+      let result = data;
+      let ctrlApplied = false;
+      let altApplied = false;
+
+      // Apply Ctrl modifier - only for single printable characters
+      if (this.ctrlActive && data.length === 1) {
+        const code = data.toUpperCase().charCodeAt(0);
+        // A-Z (65-90) -> Ctrl codes 1-26
+        if (code >= 65 && code <= 90) {
+          result = String.fromCharCode(code - 64);
+          ctrlApplied = true;
+        } else if (code >= 97 && code <= 122) {
+          // lowercase a-z
+          result = String.fromCharCode(code - 96);
+          ctrlApplied = true;
+        }
+      }
+
+      // Apply Alt modifier (ESC prefix) - only for single characters
+      if (this.altActive && data.length === 1) {
+        result = '\x1b' + result;
+        altApplied = true;
+      }
+
+      // Only reset modifier state if it was actually applied
+      if (ctrlApplied) {
+        this.ctrlActive = false;
+        this.updateModifierButtons();
+      }
+      if (altApplied) {
+        this.altActive = false;
+        this.updateModifierButtons();
+      }
+
+      return result;
+    });
   }
 
   private setupDrag() {

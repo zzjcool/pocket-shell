@@ -22,6 +22,7 @@ export class TerminalManager {
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private lastRows = 0;
   private lastCols = 0;
+  private inputInterceptor: ((data: string) => string | null) | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -73,9 +74,12 @@ export class TerminalManager {
     // Also listen to window resize as fallback
     window.addEventListener('resize', debouncedFit);
 
-    // Handle input
+    // Handle input - allow interceptor for modifier keys
     this.terminal.onData((data) => {
-      this.send({ type: 'input', data });
+      const processed = this.inputInterceptor ? this.inputInterceptor(data) : data;
+      if (processed) {
+        this.send({ type: 'input', data: processed });
+      }
     });
   }
 
@@ -241,5 +245,10 @@ export class TerminalManager {
 
   getSessionId(): string | null {
     return this.sessionId;
+  }
+
+  // Set input interceptor for modifier keys (Ctrl, Alt)
+  setInputInterceptor(interceptor: ((data: string) => string | null) | null) {
+    this.inputInterceptor = interceptor;
   }
 }
