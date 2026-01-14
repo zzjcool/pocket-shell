@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Pocket Shell</title>
+  <link rel="stylesheet" href="app.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eaeaea;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      /* Hide scrollbar */
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* IE/Edge */
+    }
+
+    html::-webkit-scrollbar,
+    body::-webkit-scrollbar,
+    #app::-webkit-scrollbar,
+    .terminal-container::-webkit-scrollbar {
+      display: none; /* Chrome/Safari/Opera */
+    }
+
+    #app {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .terminal-container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    /* Login View */
+    .login-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 20px;
+    }
+
+    .login-box {
+      background: #16213e;
+      padding: 40px;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 360px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .login-title {
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 28px;
+      color: #4ecdc4;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 14px 16px;
+      border: 1px solid #3a3a5e;
+      border-radius: 8px;
+      background: #1a1a2e;
+      color: #eaeaea;
+      font-size: 16px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus {
+      border-color: #4ecdc4;
+    }
+
+    .login-btn {
+      width: 100%;
+      padding: 14px;
+      background: #4ecdc4;
+      color: #1a1a2e;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .login-btn:hover {
+      background: #3dbdb5;
+    }
+
+    .error-msg {
+      color: #ff6b6b;
+      text-align: center;
+      margin-top: 16px;
+      font-size: 14px;
+    }
+
+    /* Terminal View */
+    #terminal-area {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    #terminal-area .xterm {
+      height: 100%;
+      padding: 8px;
+    }
+
+    /* Hide xterm scrollbar */
+    .xterm-viewport::-webkit-scrollbar {
+      display: none;
+    }
+
+    .xterm-viewport {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    /* Remove scrollbar reserved space */
+    .xterm .xterm-viewport {
+      overflow-y: auto !important;
+    }
+
+    .xterm .xterm-screen {
+      width: 100% !important;
+    }
+    
+    .xterm .xterm-rows {
+      width: 100% !important;
+    }
+
+    /* Virtual Keyboard */
+    .virtual-keyboard {
+      background: #16213e;
+      padding: 8px;
+      border-top: 1px solid #3a3a5e;
+    }
+
+    .keyboard-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .keyboard-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .keyboard-btn {
+      flex: 1;
+      padding: 12px 8px;
+      background: #1a1a2e;
+      color: #eaeaea;
+      border: 1px solid #3a3a5e;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      touch-action: manipulation;
+      user-select: none;
+      transition: all 0.1s;
+    }
+
+    .keyboard-btn:active {
+      background: #3a3a5e;
+      transform: scale(0.95);
+    }
+
+    .keyboard-btn.active {
+      background: #4ecdc4;
+      color: #1a1a2e;
+      border-color: #4ecdc4;
+    }
+
+    .quick-row .keyboard-btn {
+      background: #0f3460;
+      border-color: #1a5490;
+    }
+
+    .quick-row .logout-btn {
+      background: #4a1a1a;
+      border-color: #6b2a2a;
+      color: #ff6b6b;
+    }
+
+    .arrow-row {
+      justify-content: center;
+    }
+
+    .arrow-btn {
+      flex: 0 0 50px;
+      font-size: 18px;
+    }
+
+    /* Mobile adjustments */
+    @media (max-width: 480px) {
+      .login-box {
+        padding: 30px 24px;
+      }
+
+      .keyboard-btn {
+        padding: 10px 6px;
+        font-size: 13px;
+      }
+
+      .arrow-btn {
+        flex: 0 0 40px;
+      }
+    }
+
+    /* Safe area for notched devices */
+    @supports (padding-bottom: env(safe-area-inset-bottom)) {
+      .virtual-keyboard {
+        padding-bottom: calc(8px + env(safe-area-inset-bottom));
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="login-container">
+      <div class="login-box">
+        <h1 class="login-title">Pocket Shell</h1>
+        <p style="text-align: center; color: #888;">Loading...</p>
+      </div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

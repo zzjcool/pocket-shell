@@ -1,0 +1,15 @@
+# Dependencies
+web/node_modules/
+
+# Build outputs
+bin/
+web/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
