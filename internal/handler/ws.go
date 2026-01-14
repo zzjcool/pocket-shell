@@ -125,6 +125,7 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			if err := json.Unmarshal(msg.Data, &resize); err != nil {
 				continue
 			}
+			// Resize triggers SIGWINCH which causes fullscreen apps to redraw
 			session.PTY.Resize(resize.Rows, resize.Cols)
 
 		case "ping":

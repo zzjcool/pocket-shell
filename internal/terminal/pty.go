@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"syscall"
 
 	"github.com/creack/pty"
 )
@@ -65,6 +66,17 @@ func (p *PTY) Resize(rows, cols uint16) error {
 		Rows: rows,
 		Cols: cols,
 	})
+}
+
+// SendSIGWINCH sends SIGWINCH to the PTY process to trigger a redraw
+func (p *PTY) SendSIGWINCH() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.cmd.Process != nil {
+		// Send SIGWINCH to the foreground process group
+		return syscall.Kill(-p.cmd.Process.Pid, syscall.SIGWINCH)
+	}
+	return nil
 }
 
 // Close closes the PTY

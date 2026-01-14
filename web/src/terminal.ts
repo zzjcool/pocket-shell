@@ -116,6 +116,48 @@ export class TerminalManager {
     }
   }
 
+  // Force a terminal refresh by sending a resize to trigger SIGWINCH on fullscreen apps
+  private forceRefresh() {
+    const core = (this.terminal as unknown as { _core: { _renderService: { dimensions: { css: { cell: { width: number; height: number } } } } } })._core;
+    const dims = core._renderService.dimensions;
+    if (!dims?.css?.cell) {
+      this.fitAddon.fit();
+      return;
+    }
+    
+    const cellWidth = dims.css.cell.width;
+    const cellHeight = dims.css.cell.height;
+    
+    const style = getComputedStyle(this.container.querySelector('.xterm')!);
+    const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+    const paddingY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    
+    const availableWidth = this.container.clientWidth - paddingX;
+    const availableHeight = this.container.clientHeight - paddingY;
+    
+    const newCols = Math.max(2, Math.floor(availableWidth / cellWidth));
+    const newRows = Math.max(1, Math.floor(availableHeight / cellHeight));
+    
+    this.terminal.resize(newCols, newRows);
+    this.lastRows = newRows;
+    this.lastCols = newCols;
+    
+    // Send a slightly different size first, then the correct size
+    // This triggers a full redraw in fullscreen apps like htop
+    this.send({
+      type: 'resize',
+      data: { rows: Math.max(1, newRows - 1), cols: Math.max(2, newCols - 1) },
+    });
+    
+    // Then send the correct size after a short delay
+    setTimeout(() => {
+      this.send({
+        type: 'resize',
+        data: { rows: newRows, cols: newCols },
+      });
+    }, 50);
+  }
+
   async connect(sessionId: string) {
     if (this.ws) {
       this.disconnect();
@@ -125,8 +167,16 @@ export class TerminalManager {
     this.ws = api.createWebSocket(sessionId);
 
     this.ws.onopen = () => {
-      this.terminal.clear();
-      this.fit();
+      // Don't clear terminal - we want to receive the refreshed screen from server
+      // Trigger a resize to force fullscreen apps like htop to redraw
+      this.forceRefresh();
+      
+      // Send Ctrl+L after a short delay to trigger a screen redraw in fullscreen apps
+      // This helps apps like htop properly reinitialize the alternate screen buffer
+      setTimeout(() => {
+        this.send({ type: 'input', data: '\x0c' }); // Ctrl+L
+      }, 100);
+      
       // Start ping interval
       this.pingInterval = setInterval(() => {
         this.send({ type: 'ping', data: null });
