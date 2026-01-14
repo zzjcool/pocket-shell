@@ -2,10 +2,10 @@
 set -e
 
 # Pocket Shell Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/pocketshell/pocket-shell/main/install.sh | sh
-#    or: wget -qO- https://raw.githubusercontent.com/pocketshell/pocket-shell/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
+#    or: wget -qO- https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
 
-REPO="pocketshell/pocket-shell"
+REPO="zzjcool/pocket-shell"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 BINARY_NAME="pocket-shell"
 

@@ -20,13 +20,13 @@ A mobile-optimized web terminal that lets you use the command line smoothly on y
 Using curl:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pocketshell/pocket-shell/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
 ```
 
 Using wget:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/pocketshell/pocket-shell/main/install.sh | sh
+wget -qO- https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
 ```
 
 After installation, run:

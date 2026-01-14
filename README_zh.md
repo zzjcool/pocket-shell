@@ -20,13 +20,13 @@
 使用 curl:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pocketshell/pocket-shell/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
 ```
 
 使用 wget:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/pocketshell/pocket-shell/main/install.sh | sh
+wget -qO- https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
 ```
 
 安装完成后运行:
