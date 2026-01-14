@@ -41,6 +41,26 @@ func (s *Session) Touch() {
 	s.LastUsed = time.Now()
 }
 
+// RestartPTY restarts the PTY with a new shell
+func (s *Session) RestartPTY() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Close old PTY
+	if s.PTY != nil {
+		s.PTY.Close()
+	}
+
+	// Create new PTY
+	pty, err := terminal.NewPTY("")
+	if err != nil {
+		return err
+	}
+
+	s.PTY = pty
+	return nil
+}
+
 // Close closes the session
 func (s *Session) Close() error {
 	return s.PTY.Close()

@@ -47,6 +47,8 @@ export class VirtualKeyboard {
   private dragStartRight = 0;
   private isMinimized = false;
   private minimizedButton: HTMLElement | null = null;
+  private isMultilineMode = false;  // Multi-line input mode
+  private inputArea: HTMLTextAreaElement | null = null;
 
   constructor(container: HTMLElement, terminal: TerminalManager, onLogout: () => void) {
     this.container = container;
@@ -309,6 +311,65 @@ export class VirtualKeyboard {
     
     this.container.appendChild(header);
 
+    // Input row with textarea, mode toggle and send button
+    const inputRow = document.createElement('div');
+    inputRow.className = 'keyboard-row input-row';
+    
+    // Create textarea for input
+    this.inputArea = document.createElement('textarea');
+    this.inputArea.className = 'command-input';
+    this.inputArea.placeholder = 'Enter command...';
+    this.inputArea.rows = 1;
+    
+    // Handle Enter key
+    this.inputArea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        if (!this.isMultilineMode) {
+          e.preventDefault();
+          this.sendInputCommand();
+        }
+        // In multiline mode, allow normal Enter behavior
+      }
+    });
+    
+    // Auto-resize textarea
+    this.inputArea.addEventListener('input', () => {
+      if (this.isMultilineMode && this.inputArea) {
+        this.inputArea.style.height = 'auto';
+        this.inputArea.style.height = Math.min(this.inputArea.scrollHeight, 100) + 'px';
+      }
+    });
+    
+    inputRow.appendChild(this.inputArea);
+    
+    // Mode toggle button
+    const modeBtn = this.createButton('\u2261', () => {
+      this.isMultilineMode = !this.isMultilineMode;
+      modeBtn.classList.toggle('active', this.isMultilineMode);
+      if (this.inputArea) {
+        if (this.isMultilineMode) {
+          this.inputArea.rows = 3;
+          this.inputArea.style.height = 'auto';
+        } else {
+          this.inputArea.rows = 1;
+          this.inputArea.style.height = '';
+        }
+      }
+    });
+    modeBtn.className = 'keyboard-btn mode-btn';
+    modeBtn.title = 'Toggle multi-line mode';
+    inputRow.appendChild(modeBtn);
+    
+    // Send button
+    const sendBtn = this.createButton('\u27A4', () => {
+      this.sendInputCommand();
+    });
+    sendBtn.className = 'keyboard-btn send-btn';
+    sendBtn.title = 'Send command';
+    inputRow.appendChild(sendBtn);
+    
+    this.container.appendChild(inputRow);
+
     // Quick commands row with logout button and minimize button
     const quickRow = this.createRow('quick-row');
     
@@ -327,12 +388,15 @@ export class VirtualKeyboard {
       quickRow.appendChild(btn);
     });
     
-    // Minimize button at the end of quick row
-    const minimizeBtn = this.createButton('−', () => {
+    // Minimize button at the end of quick row (zoom icon)
+    const minimizeBtn = document.createElement('button');
+    minimizeBtn.className = 'keyboard-btn minimize-btn';
+    minimizeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
+    minimizeBtn.title = '缩小工具栏';
+    minimizeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
       this.minimize();
     });
-    minimizeBtn.classList.add('minimize-btn');
-    minimizeBtn.title = '缩小工具栏';
     quickRow.appendChild(minimizeBtn);
     
     this.container.appendChild(quickRow);
@@ -432,5 +496,19 @@ export class VirtualKeyboard {
         btn.classList.toggle('active', this.altActive);
       }
     });
+  }
+
+  private sendInputCommand() {
+    if (!this.inputArea) return;
+    const command = this.inputArea.value;
+    if (command.trim()) {
+      // Send command with newline
+      this.terminal.sendKey(command + '\n');
+      this.inputArea.value = '';
+      // Reset height in multiline mode
+      if (this.isMultilineMode) {
+        this.inputArea.style.height = '';
+      }
+    }
   }
 }

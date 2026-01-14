@@ -70,8 +70,30 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		for {
 			n, err := session.PTY.Read(buf)
 			if err != nil {
-				cancel()
-				return
+				// PTY closed, check if we should restart
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					// Try to restart the shell
+					if restartErr := session.RestartPTY(); restartErr != nil {
+						cancel()
+						return
+					}
+					// Send a message to the client that shell was restarted
+					restartMsg := "\r\n\x1b[33m[Shell exited, restarting...]\x1b[0m\r\n"
+					dataBytes, _ := json.Marshal(restartMsg)
+					msg := wsMessage{
+						Type: "output",
+						Data: json.RawMessage(dataBytes),
+					}
+					msgBytes, _ := json.Marshal(msg)
+					if writeErr := conn.Write(ctx, websocket.MessageText, msgBytes); writeErr != nil {
+						cancel()
+						return
+					}
+					continue
+				}
 			}
 			if n > 0 {
 				// Properly encode the output as JSON string
@@ -94,8 +116,6 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-ctx.Done():
-			return
-		case <-session.PTY.Done():
 			return
 		default:
 		}
