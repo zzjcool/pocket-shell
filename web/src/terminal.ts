@@ -23,6 +23,39 @@ function debounce<T extends (...args: unknown[]) => void>(fn: T, delay: number):
   }) as T;
 }
 
+// Module-level cache for font size to avoid repeated localStorage access
+const FONT_SIZE_KEY = 'pocket-shell-font-size';
+let cachedFontSize: number | null = null;
+
+function getCachedFontSize(minSize: number, maxSize: number, defaultSize: number): number {
+  if (cachedFontSize !== null) {
+    return cachedFontSize;
+  }
+  try {
+    const saved = localStorage.getItem(FONT_SIZE_KEY);
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= minSize && parsed <= maxSize) {
+        cachedFontSize = parsed;
+        return cachedFontSize;
+      }
+    }
+  } catch {
+    // localStorage might be unavailable
+  }
+  cachedFontSize = defaultSize;
+  return cachedFontSize;
+}
+
+function setCachedFontSize(size: number): void {
+  cachedFontSize = size;
+  try {
+    localStorage.setItem(FONT_SIZE_KEY, size.toString());
+  } catch {
+    // localStorage might be unavailable
+  }
+}
+
 export class TerminalManager {
   private terminal: Terminal;
   private fitAddon: FitAddon;
@@ -41,7 +74,6 @@ export class TerminalManager {
   private fontSize = 12;
   private readonly minFontSize = 8;
   private readonly maxFontSize = 32;
-  private readonly fontSizeKey = 'pocket-shell-font-size';
   
   // For cleanup
   private resizeObserver: ResizeObserver | null = null;
@@ -53,14 +85,8 @@ export class TerminalManager {
   private outputFlushScheduled = false;
 
   constructor(container: HTMLElement) {
-    // Load saved font size from localStorage
-    const savedFontSize = localStorage.getItem(this.fontSizeKey);
-    if (savedFontSize) {
-      const parsed = parseInt(savedFontSize, 10);
-      if (!isNaN(parsed) && parsed >= this.minFontSize && parsed <= this.maxFontSize) {
-        this.fontSize = parsed;
-      }
-    }
+    // Load saved font size from cache
+    this.fontSize = getCachedFontSize(this.minFontSize, this.maxFontSize, 12);
     this.container = container;
     this.terminal = new Terminal({
       cursorBlink: true,
@@ -108,18 +134,7 @@ export class TerminalManager {
     this.terminal.open(container);
     
     // Load WebGL addon for GPU acceleration (must be after terminal.open)
-    try {
-      this.webglAddon = new WebglAddon();
-      this.webglAddon.onContextLoss(() => {
-        // If WebGL context is lost, dispose and fall back to canvas
-        this.webglAddon?.dispose();
-        this.webglAddon = null;
-      });
-      this.terminal.loadAddon(this.webglAddon);
-      debugLog('[Terminal] WebGL renderer enabled');
-    } catch (e) {
-      console.warn('[Terminal] WebGL not available, using canvas renderer:', e);
-    }
+    this.initWebGL();
     
     this.fit();
 
@@ -255,6 +270,30 @@ export class TerminalManager {
     });
   }
 
+  // Initialize WebGL with context loss recovery
+  private initWebGL() {
+    if (this.disposed || this.webglAddon) return;
+    
+    try {
+      this.webglAddon = new WebglAddon();
+      this.webglAddon.onContextLoss(() => {
+        debugLog('[Terminal] WebGL context lost, attempting recovery...');
+        this.webglAddon?.dispose();
+        this.webglAddon = null;
+        
+        // Attempt to recover WebGL after a delay
+        if (!this.disposed) {
+          setTimeout(() => this.initWebGL(), 1000);
+        }
+      });
+      this.terminal.loadAddon(this.webglAddon);
+      debugLog('[Terminal] WebGL renderer enabled');
+    } catch (e) {
+      console.warn('[Terminal] WebGL not available, using canvas renderer:', e);
+      this.webglAddon = null;
+    }
+  }
+
   fit() {
     // Calculate dimensions manually to ignore scrollbar width
     const core = (this.terminal as unknown as { _core: { _renderService: { dimensions: { css: { cell: { width: number; height: number } } } } } })._core;
@@ -363,10 +402,10 @@ export class TerminalManager {
         this.send({ type: 'input', data: '\x0c' }); // Ctrl+L
       }, 100);
       
-      // Start ping interval
+      // Start ping interval (60s to reduce network overhead)
       this.pingInterval = setInterval(() => {
         this.send({ type: 'ping', data: null });
-      }, 30000);
+      }, 60000);
     };
 
     this.ws.onmessage = (event) => {
@@ -477,7 +516,7 @@ export class TerminalManager {
     
     this.fontSize = newSize;
     this.terminal.options.fontSize = newSize;
-    localStorage.setItem(this.fontSizeKey, String(newSize));
+    setCachedFontSize(newSize);
     this.fit();
   }
 
