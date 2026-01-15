@@ -611,6 +611,151 @@
         padding-bottom: calc(8px + env(safe-area-inset-bottom));
       }
     }
+
+    /* Swipe Arrow Indicator - Visual feedback for long-press arrow gesture */
+    .swipe-arrow-indicator {
+      position: fixed;
+      width: 100px;
+      height: 100px;
+      margin-left: -50px;
+      margin-top: -50px;
+      border-radius: 50%;
+      background: rgba(78, 205, 196, 0.15);
+      border: 2px solid rgba(78, 205, 196, 0.5);
+      pointer-events: none;
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: swipe-arrow-pulse 0.3s ease-out;
+    }
+
+    @keyframes swipe-arrow-pulse {
+      0% {
+        transform: scale(0.5);
+        opacity: 0;
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    /* Crosshair lines */
+    .swipe-arrow-crosshair {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+    }
+
+    .swipe-arrow-crosshair::before,
+    .swipe-arrow-crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(78, 205, 196, 0.3);
+    }
+
+    /* Vertical line */
+    .swipe-arrow-crosshair::before {
+      left: 50%;
+      top: 20%;
+      width: 1px;
+      height: 60%;
+      transform: translateX(-50%);
+    }
+
+    /* Horizontal line */
+    .swipe-arrow-crosshair::after {
+      top: 50%;
+      left: 20%;
+      height: 1px;
+      width: 60%;
+      transform: translateY(-50%);
+    }
+
+    /* Direction indicator (the dot that follows finger) */
+    .swipe-arrow-direction {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #4ecdc4;
+      box-shadow: 0 0 10px rgba(78, 205, 196, 0.8);
+      transition: transform 0.05s ease-out;
+    }
+
+    /* Direction active states - show arrow shape */
+    .swipe-arrow-direction.direction-up,
+    .swipe-arrow-direction.direction-down,
+    .swipe-arrow-direction.direction-left,
+    .swipe-arrow-direction.direction-right {
+      background: #4ecdc4;
+      box-shadow: 0 0 15px rgba(78, 205, 196, 1);
+    }
+
+    /* Arrow icons using CSS triangles */
+    .swipe-arrow-direction.direction-up::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-bottom: 8px solid #0f172a;
+    }
+
+    .swipe-arrow-direction.direction-down::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 8px solid #0f172a;
+    }
+
+    .swipe-arrow-direction.direction-left::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border-top: 6px solid transparent;
+      border-bottom: 6px solid transparent;
+      border-right: 8px solid #0f172a;
+    }
+
+    .swipe-arrow-direction.direction-right::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border-top: 6px solid transparent;
+      border-bottom: 6px solid transparent;
+      border-left: 8px solid #0f172a;
+    }
+
+    /* Pulse animation for visual feedback (especially for iOS without haptic) */
+    .swipe-arrow-direction.pulse {
+      animation: swipe-arrow-key-pulse 0.15s ease-out;
+    }
+
+    @keyframes swipe-arrow-key-pulse {
+      0% {
+        transform: translate(var(--tx, 0), var(--ty, 0)) scale(1);
+        box-shadow: 0 0 15px rgba(78, 205, 196, 1);
+      }
+      50% {
+        transform: translate(var(--tx, 0), var(--ty, 0)) scale(1.3);
+        box-shadow: 0 0 25px rgba(78, 205, 196, 1), 0 0 40px rgba(78, 205, 196, 0.5);
+      }
+      100% {
+        transform: translate(var(--tx, 0), var(--ty, 0)) scale(1);
+        box-shadow: 0 0 15px rgba(78, 205, 196, 1);
+      }
+    }
   </style>
 </head>
 <body>

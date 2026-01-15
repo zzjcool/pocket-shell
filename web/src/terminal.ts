@@ -4,6 +4,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { api } from './api';
 import type { WSMessage } from './types';
+import { SwipeArrowController } from './swipe-arrow';
 
 // Debug mode - only log when ?debug=1 is in URL
 const DEBUG = typeof window !== 'undefined' && window.location.search.includes('debug=1');
@@ -92,6 +93,9 @@ export class TerminalManager {
   // Touch selection state
   private touchSelectionStart: { col: number; row: number } | null = null;
   private touchSelectionActive = false;
+  
+  // Swipe arrow controller for long-press arrow key gestures
+  private swipeArrowController: SwipeArrowController | null = null;
   
   // Message batching for performance
   private outputBuffer = '';
@@ -263,6 +267,9 @@ export class TerminalManager {
 
     // Setup pinch-to-zoom for font size adjustment on mobile
     this.setupPinchZoom();
+
+    // Setup swipe arrow controller for long-press arrow key gestures
+    this.setupSwipeArrow();
 
     // Handle input - allow interceptor for modifier keys
     this.terminal.onData((data) => {
@@ -824,6 +831,24 @@ export class TerminalManager {
     });
   }
 
+  // Setup swipe arrow controller for long-press arrow key gestures
+  private setupSwipeArrow() {
+    this.swipeArrowController = new SwipeArrowController(this.container, {
+      onSendKey: (key: string) => {
+        this.sendKey(key);
+      },
+      onKeyboardLock: (locked: boolean) => {
+        this.setKeyboardLocked(locked);
+      },
+      longPressDelay: 500,
+      minDistance: 20,
+      minRepeatDistance: 50,
+      maxRepeatDistance: 150,
+      slowRepeatInterval: 400,
+      fastRepeatInterval: 50,
+    });
+  }
+
   getTerminal(): Terminal {
     return this.terminal;
   }
@@ -1036,6 +1061,12 @@ export class TerminalManager {
     if (this.webglAddon) {
       this.webglAddon.dispose();
       this.webglAddon = null;
+    }
+    
+    // Dispose swipe arrow controller
+    if (this.swipeArrowController) {
+      this.swipeArrowController.dispose();
+      this.swipeArrowController = null;
     }
     
     // Dispose terminal
