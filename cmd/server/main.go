@@ -39,10 +39,8 @@ func main() {
 	// Setup JWT manager
 	jwtManager := auth.NewJWTManager(*jwtSecret, 24*time.Hour)
 
-	// Setup session manager with automatic cleanup
+	// Setup session manager (sessions persist until manually deleted or server restart)
 	sessionManager := session.NewManager()
-	// Clean up stale sessions every 5 minutes, timeout after 30 minutes of inactivity
-	sessionManager.StartCleanup(5*time.Minute, 30*time.Minute)
 
 	// Setup handler
 	h, err := handler.New(handler.Config{
