@@ -148,8 +148,6 @@ export class TerminalManager {
     let flushTimeout: ReturnType<typeof setTimeout> | null = null;
     // Track what we've already sent to avoid duplicates
     let lastSentLength = 0;
-    // Flag to skip flush after xterm handled input
-    let skipNextFlush = false;
     
     const clearFlushTimeout = () => {
       if (flushTimeout) {
@@ -164,19 +162,13 @@ export class TerminalManager {
         xtermTextarea.value = '';
         lastSentLength = 0;
       }
-      // Skip the next flush since xterm already handled it
-      skipNextFlush = true;
     };
     
     // Flush any pending input in textarea that xterm missed
     const flushPendingInput = () => {
-      clearFlushTimeout();
+      flushTimeout = null; // Mark as no longer scheduled
       
-      // Skip if xterm already handled this input
-      if (skipNextFlush) {
-        skipNextFlush = false;
-        return;
-      }
+      debugLog('[XtermTextarea] flushPendingInput called, textareaValue:', JSON.stringify(xtermTextarea?.value));
       
       if (xtermTextarea && xtermTextarea.value) {
         // Only send what hasn't been sent yet
@@ -259,6 +251,7 @@ export class TerminalManager {
       debugLog('[Terminal] onData:', JSON.stringify(data), 'hasInterceptor:', !!this.inputInterceptor);
       
       // xterm handled this, cancel pending flush and clear textarea
+      debugLog('[Terminal] onData - canceling pending flush and clearing textarea');
       clearFlushTimeout();
       onXtermData();
       
