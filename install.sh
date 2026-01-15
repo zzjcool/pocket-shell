@@ -42,14 +42,47 @@ detect_arch() {
 
 # Get latest release version
 get_latest_version() {
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/'
-    elif command -v wget >/dev/null 2>&1; then
-        wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/'
-    else
-        echo "Error: curl or wget is required" >&2
-        exit 1
+    local url="https://api.github.com/repos/${REPO}/releases/latest"
+    local max_retries=3
+    local retry=0
+    local auth_header=""
+    
+    # Use GitHub token if available (for better rate limits)
+    if [ -n "$GITHUB_TOKEN" ]; then
+        auth_header="-H \"Authorization: token $GITHUB_TOKEN\""
     fi
+    
+    while [ $retry -lt $max_retries ]; do
+        local response
+        
+        if command -v curl >/dev/null 2>&1; then
+            if [ -n "$auth_header" ]; then
+                response=$(curl -fsSL --connect-timeout 5 $auth_header "$url" 2>/dev/null)
+            else
+                response=$(curl -fsSL --connect-timeout 5 "$url" 2>/dev/null)
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            response=$(wget -qO- --timeout=5 "$url" 2>/dev/null)
+        else
+            echo "Error: curl or wget is required" >&2
+            exit 1
+        fi
+        
+        if [ -n "$response" ]; then
+            local version=$(echo "$response" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/' | head -1)
+            if [ -n "$version" ]; then
+                echo "$version"
+                return 0
+            fi
+        fi
+        
+        retry=$((retry + 1))
+        if [ $retry -lt $max_retries ]; then
+            sleep 1
+        fi
+    done
+    
+    return 1
 }
 
 # Download file
@@ -95,7 +128,16 @@ main() {
     # Get latest version from GitHub
     VERSION=$(get_latest_version)
     if [ -z "$VERSION" ]; then
-        echo "Error: Failed to get latest version" >&2
+        echo "Error: Failed to get latest version from GitHub" >&2
+        echo "This may be due to:" >&2
+        echo "  - GitHub API rate limiting (try again in a few minutes)" >&2
+        echo "  - Network connectivity issues" >&2
+        echo "  - GitHub service unavailability" >&2
+        echo "" >&2
+        echo "You can:" >&2
+        echo "  1. Try again in a few minutes" >&2
+        echo "  2. Check https://github.com/zzjcool/pocket-shell/releases for latest version" >&2
+        echo "  3. Manually download from https://github.com/zzjcool/pocket-shell/releases" >&2
         exit 1
     fi
 

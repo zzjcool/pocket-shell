@@ -31,6 +31,21 @@ Using wget:
 wget -qO- https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
 ```
 
+If you encounter GitHub API rate limit errors, you can provide a GitHub token:
+
+```bash
+export GITHUB_TOKEN=your_token_here
+curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
+```
+
+Or download and run manually:
+
+```bash
+wget https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh
+sh install.sh --check
+sh install.sh  # to install
+```
+
 ### Check for Updates
 
 ```bash

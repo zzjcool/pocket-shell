@@ -31,6 +31,21 @@ curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.s
 wget -qO- https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
 ```
 
+如果遇到 GitHub API 限制错误，可以提供 GitHub Token：
+
+```bash
+export GITHUB_TOKEN=your_token_here
+curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
+```
+
+或手动下载运行：
+
+```bash
+wget https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh
+sh install.sh --check
+sh install.sh  # 执行安装
+```
+
 ### 检查更新
 
 ```bash
