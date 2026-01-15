@@ -5,6 +5,15 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { api } from './api';
 import type { WSMessage } from './types';
 
+// Debug mode - only log when ?debug=1 is in URL
+const DEBUG = typeof window !== 'undefined' && window.location.search.includes('debug=1');
+
+function debugLog(...args: unknown[]) {
+  if (DEBUG) {
+    console.log(...args);
+  }
+}
+
 // Debounce helper
 function debounce<T extends (...args: unknown[]) => void>(fn: T, delay: number): T {
   let timeoutId: ReturnType<typeof setTimeout>;
@@ -17,6 +26,7 @@ function debounce<T extends (...args: unknown[]) => void>(fn: T, delay: number):
 export class TerminalManager {
   private terminal: Terminal;
   private fitAddon: FitAddon;
+  private webglAddon: WebglAddon | null = null;
   private ws: WebSocket | null = null;
   private sessionId: string | null = null;
   private container: HTMLElement;
@@ -32,6 +42,15 @@ export class TerminalManager {
   private readonly minFontSize = 8;
   private readonly maxFontSize = 32;
   private readonly fontSizeKey = 'pocket-shell-font-size';
+  
+  // For cleanup
+  private resizeObserver: ResizeObserver | null = null;
+  private debouncedFit: (() => void) | null = null;
+  private disposed = false;
+  
+  // Message batching for performance
+  private outputBuffer = '';
+  private outputFlushScheduled = false;
 
   constructor(container: HTMLElement) {
     // Load saved font size from localStorage
@@ -90,13 +109,14 @@ export class TerminalManager {
     
     // Load WebGL addon for GPU acceleration (must be after terminal.open)
     try {
-      const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => {
+      this.webglAddon = new WebglAddon();
+      this.webglAddon.onContextLoss(() => {
         // If WebGL context is lost, dispose and fall back to canvas
-        webglAddon.dispose();
+        this.webglAddon?.dispose();
+        this.webglAddon = null;
       });
-      this.terminal.loadAddon(webglAddon);
-      console.log('[Terminal] WebGL renderer enabled');
+      this.terminal.loadAddon(this.webglAddon);
+      debugLog('[Terminal] WebGL renderer enabled');
     } catch (e) {
       console.warn('[Terminal] WebGL not available, using canvas renderer:', e);
     }
@@ -110,6 +130,8 @@ export class TerminalManager {
     let flushTimeout: ReturnType<typeof setTimeout> | null = null;
     // Track what we've already sent to avoid duplicates
     let lastSentLength = 0;
+    // Flag to skip flush after xterm handled input
+    let skipNextFlush = false;
     
     const clearFlushTimeout = () => {
       if (flushTimeout) {
@@ -124,11 +146,20 @@ export class TerminalManager {
         xtermTextarea.value = '';
         lastSentLength = 0;
       }
+      // Skip the next flush since xterm already handled it
+      skipNextFlush = true;
     };
     
     // Flush any pending input in textarea that xterm missed
     const flushPendingInput = () => {
       clearFlushTimeout();
+      
+      // Skip if xterm already handled this input
+      if (skipNextFlush) {
+        skipNextFlush = false;
+        return;
+      }
+      
       if (xtermTextarea && xtermTextarea.value) {
         // Only send what hasn't been sent yet
         const currentValue = xtermTextarea.value;
@@ -137,7 +168,7 @@ export class TerminalManager {
           // Fix: Replace non-breaking space (U+00A0) with regular space
           // Some mobile keyboards insert NBSP instead of regular spaces
           pendingValue = pendingValue.replace(/\u00A0/g, ' ');
-          console.log('[XtermTextarea] FLUSH pending input:', JSON.stringify(pendingValue));
+          debugLog('[XtermTextarea] FLUSH pending input:', JSON.stringify(pendingValue));
           this.send({ type: 'input', data: pendingValue });
           lastSentLength = currentValue.length;
         }
@@ -148,18 +179,18 @@ export class TerminalManager {
     };
     
     if (xtermTextarea) {
-      console.log('[Terminal] Found xterm textarea, adding mobile input workaround');
+      debugLog('[Terminal] Found xterm textarea, adding mobile input workaround');
       
       // Track composition state
       xtermTextarea.addEventListener('compositionstart', (e) => {
-        console.log('[XtermTextarea] compositionstart:', (e as CompositionEvent).data);
+        debugLog('[XtermTextarea] compositionstart:', (e as CompositionEvent).data);
         isComposing = true;
         clearFlushTimeout();
       });
       
       xtermTextarea.addEventListener('compositionend', (e) => {
         const data = (e as CompositionEvent).data;
-        console.log('[XtermTextarea] compositionend:', data);
+        debugLog('[XtermTextarea] compositionend:', data);
         isComposing = false;
         // Schedule a flush to catch any missed input after composition
         clearFlushTimeout();
@@ -168,13 +199,13 @@ export class TerminalManager {
       
       xtermTextarea.addEventListener('beforeinput', (e) => {
         const inputEvent = e as InputEvent;
-        console.log('[XtermTextarea] beforeinput:', JSON.stringify(inputEvent.data), 'inputType:', inputEvent.inputType, 'isComposing:', isComposing);
+        debugLog('[XtermTextarea] beforeinput:', JSON.stringify(inputEvent.data), 'inputType:', inputEvent.inputType, 'isComposing:', isComposing);
       });
       
       xtermTextarea.addEventListener('input', (e) => {
         const target = e.target as HTMLTextAreaElement;
         const inputEvent = e as InputEvent;
-        console.log('[XtermTextarea] input:', JSON.stringify(target.value), 'inputType:', inputEvent.inputType, 'isComposing:', isComposing);
+        debugLog('[XtermTextarea] input:', JSON.stringify(target.value), 'inputType:', inputEvent.inputType, 'isComposing:', isComposing);
         
         // Skip during active composition
         if (isComposing) {
@@ -186,28 +217,28 @@ export class TerminalManager {
         flushTimeout = setTimeout(flushPendingInput, 150);
       });
     } else {
-      console.log('[Terminal] xterm textarea not found');
+      debugLog('[Terminal] xterm textarea not found');
     }
     
     // Helper to clear textarea when xterm handles input
     const onXtermData = clearTextarea;
 
     // Handle resize with debounce using ResizeObserver
-    const debouncedFit = debounce(() => this.fit(), 100);
+    this.debouncedFit = debounce(() => this.fit(), 100);
     
     // Use ResizeObserver to detect container size changes (including virtual keyboard show/hide)
-    const resizeObserver = new ResizeObserver(debouncedFit);
-    resizeObserver.observe(container);
+    this.resizeObserver = new ResizeObserver(this.debouncedFit);
+    this.resizeObserver.observe(container);
     
     // Also listen to window resize as fallback
-    window.addEventListener('resize', debouncedFit);
+    window.addEventListener('resize', this.debouncedFit);
 
     // Setup pinch-to-zoom for font size adjustment on mobile
     this.setupPinchZoom();
 
     // Handle input - allow interceptor for modifier keys
     this.terminal.onData((data) => {
-      console.log('[Terminal] onData:', JSON.stringify(data), 'hasInterceptor:', !!this.inputInterceptor);
+      debugLog('[Terminal] onData:', JSON.stringify(data), 'hasInterceptor:', !!this.inputInterceptor);
       
       // xterm handled this, cancel pending flush and clear textarea
       clearFlushTimeout();
@@ -217,7 +248,7 @@ export class TerminalManager {
       let fixedData = data.replace(/\u00A0/g, ' ');
       
       const processed = this.inputInterceptor ? this.inputInterceptor(fixedData) : fixedData;
-      console.log('[Terminal] processed:', JSON.stringify(processed));
+      debugLog('[Terminal] processed:', JSON.stringify(processed));
       if (processed) {
         this.send({ type: 'input', data: processed });
       }
@@ -342,7 +373,7 @@ export class TerminalManager {
       try {
         const msg: WSMessage = JSON.parse(event.data);
         if (msg.type === 'output') {
-          this.terminal.write(msg.data as string);
+          this.bufferOutput(msg.data as string);
         }
       } catch (e) {
         console.error('Failed to parse WebSocket message:', e);
@@ -406,16 +437,31 @@ export class TerminalManager {
 
   private send(msg: WSMessage) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      console.log('[Terminal] send:', msg.type, JSON.stringify(msg.data));
+      debugLog('[Terminal] send:', msg.type, JSON.stringify(msg.data));
       this.ws.send(JSON.stringify(msg));
     } else {
-      console.log('[Terminal] send FAILED - ws not open, readyState:', this.ws?.readyState);
+      debugLog('[Terminal] send FAILED - ws not open, readyState:', this.ws?.readyState);
+    }
+  }
+
+  // Buffer output and flush on next animation frame for better performance
+  private bufferOutput(data: string) {
+    this.outputBuffer += data;
+    if (!this.outputFlushScheduled) {
+      this.outputFlushScheduled = true;
+      requestAnimationFrame(() => {
+        if (this.outputBuffer) {
+          this.terminal.write(this.outputBuffer);
+          this.outputBuffer = '';
+        }
+        this.outputFlushScheduled = false;
+      });
     }
   }
 
   // Send special key
   sendKey(key: string) {
-    console.log('[Terminal] sendKey called:', JSON.stringify(key));
+    debugLog('[Terminal] sendKey called:', JSON.stringify(key));
     this.send({ type: 'input', data: key });
     this.terminal.focus();
   }
@@ -492,5 +538,35 @@ export class TerminalManager {
   // Set input interceptor for modifier keys (Ctrl, Alt)
   setInputInterceptor(interceptor: ((data: string) => string | null) | null) {
     this.inputInterceptor = interceptor;
+  }
+
+  // Dispose and cleanup all resources
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    
+    // Disconnect WebSocket
+    this.disconnect();
+    
+    // Disconnect ResizeObserver
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+    
+    // Remove window resize listener
+    if (this.debouncedFit) {
+      window.removeEventListener('resize', this.debouncedFit);
+      this.debouncedFit = null;
+    }
+    
+    // Dispose WebGL addon
+    if (this.webglAddon) {
+      this.webglAddon.dispose();
+      this.webglAddon = null;
+    }
+    
+    // Dispose terminal
+    this.terminal.dispose();
   }
 }

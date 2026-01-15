@@ -101,7 +101,10 @@ class App {
   }
 
   private async logout() {
-    this.terminal?.disconnect();
+    this.terminal?.dispose();
+    this.terminal = null;
+    this.keyboard?.dispose();
+    this.keyboard = null;
     await api.logout();
     this.showLoginView();
   }

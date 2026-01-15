@@ -68,14 +68,61 @@ func (s *Session) Close() error {
 
 // Manager manages multiple sessions
 type Manager struct {
-	sessions map[string]*Session
-	mu       sync.RWMutex
+	sessions    map[string]*Session
+	mu          sync.RWMutex
+	stopCleanup chan struct{}
 }
 
 // NewManager creates a new session manager
 func NewManager() *Manager {
 	return &Manager{
-		sessions: make(map[string]*Session),
+		sessions:    make(map[string]*Session),
+		stopCleanup: make(chan struct{}),
+	}
+}
+
+// StartCleanup starts a background goroutine that periodically cleans up stale sessions
+func (m *Manager) StartCleanup(interval, timeout time.Duration) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				m.cleanupStale(timeout)
+			case <-m.stopCleanup:
+				return
+			}
+		}
+	}()
+}
+
+// StopCleanup stops the background cleanup goroutine
+func (m *Manager) StopCleanup() {
+	select {
+	case <-m.stopCleanup:
+		// Already closed
+	default:
+		close(m.stopCleanup)
+	}
+}
+
+// cleanupStale removes sessions that haven't been used within the timeout duration
+func (m *Manager) cleanupStale(timeout time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := time.Now()
+	for id, session := range m.sessions {
+		session.mu.Lock()
+		lastUsed := session.LastUsed
+		session.mu.Unlock()
+
+		if now.Sub(lastUsed) > timeout {
+			session.Close()
+			delete(m.sessions, id)
+		}
 	}
 }
 

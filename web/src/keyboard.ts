@@ -1,5 +1,14 @@
 import type { TerminalManager } from './terminal';
 
+// Debug mode - only log when ?debug=1 is in URL
+const DEBUG = typeof window !== 'undefined' && window.location.search.includes('debug=1');
+
+function debugLog(...args: unknown[]) {
+  if (DEBUG) {
+    console.log(...args);
+  }
+}
+
 interface KeyConfig {
   label: string;
   key: string;
@@ -50,6 +59,10 @@ export class VirtualKeyboard {
   private isMultilineMode = false;  // Multi-line input mode
   private inputArea: HTMLTextAreaElement | null = null;
   private isComposing = false;  // Track IME composition state
+  private ctrlButton: HTMLElement | null = null;  // Cached Ctrl button
+  private altButton: HTMLElement | null = null;   // Cached Alt button
+  private disposed = false;
+  private eventCleanups: (() => void)[] = [];  // Track event listeners for cleanup
 
   constructor(container: HTMLElement, terminal: TerminalManager, onLogout: () => void) {
     this.container = container;
@@ -62,9 +75,31 @@ export class VirtualKeyboard {
     this.setupResizeListener();
   }
   
+  private addEventListenerWithCleanup<K extends keyof WindowEventMap>(
+    target: Window,
+    type: K,
+    listener: (ev: WindowEventMap[K]) => void,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  private addEventListenerWithCleanup<K extends keyof DocumentEventMap>(
+    target: Document,
+    type: K,
+    listener: (ev: DocumentEventMap[K]) => void,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  private addEventListenerWithCleanup(
+    target: Window | Document,
+    type: string,
+    listener: EventListener,
+    options?: boolean | AddEventListenerOptions
+  ): void {
+    target.addEventListener(type, listener, options);
+    this.eventCleanups.push(() => target.removeEventListener(type, listener, options));
+  }
+
   private setupResizeListener() {
     // Handle window resize to keep keyboard/minimized button in bounds
-    window.addEventListener('resize', () => {
+    const resizeHandler = () => {
       if (this.isMinimized && this.minimizedButton) {
         // Clamp minimized button position
         const currentBottom = parseInt(this.minimizedButton.style.bottom) || 10;
@@ -78,32 +113,33 @@ export class VirtualKeyboard {
         // Clamp keyboard position
         this.clampPosition();
       }
-    });
+    };
+    this.addEventListenerWithCleanup(window, 'resize', resizeHandler);
   }
 
   private setupGlobalDragListeners() {
     // Global mouse/touch listeners for minimized button drag
-    document.addEventListener('mousemove', (e) => {
+    this.addEventListenerWithCleanup(document, 'mousemove', (e) => {
       if (this.isDraggingMinimized && this.isMinimized && this.minimizedButton) {
         e.preventDefault();
         this.handleMinimizedDragMove(e.clientX, e.clientY);
       }
     });
 
-    document.addEventListener('mouseup', () => {
+    this.addEventListenerWithCleanup(document, 'mouseup', () => {
       if (this.isMinimized && this.isDraggingMinimized) {
         this.handleMinimizedDragEnd();
       }
     });
 
-    document.addEventListener('touchmove', (e) => {
+    this.addEventListenerWithCleanup(document, 'touchmove', (e) => {
       if (this.isDraggingMinimized && this.isMinimized && this.minimizedButton) {
         e.preventDefault();
         this.handleMinimizedDragMove(e.touches[0].clientX, e.touches[0].clientY);
       }
     }, { passive: false });
 
-    document.addEventListener('touchend', () => {
+    this.addEventListenerWithCleanup(document, 'touchend', () => {
       if (this.isMinimized && this.isDraggingMinimized) {
         this.handleMinimizedDragEnd();
       }
@@ -237,11 +273,11 @@ export class VirtualKeyboard {
 
   private setupInputInterceptor() {
     this.terminal.setInputInterceptor((data: string) => {
-      console.log('[Interceptor] input:', JSON.stringify(data), 'ctrl:', this.ctrlActive, 'alt:', this.altActive);
+      debugLog('[Interceptor] input:', JSON.stringify(data), 'ctrl:', this.ctrlActive, 'alt:', this.altActive);
       
       // If no modifiers active, pass through unchanged
       if (!this.ctrlActive && !this.altActive) {
-        console.log('[Interceptor] no modifiers, passing through');
+        debugLog('[Interceptor] no modifiers, passing through');
         return data;
       }
 
@@ -279,7 +315,7 @@ export class VirtualKeyboard {
         this.updateModifierButtons();
       }
 
-      console.log('[Interceptor] result:', JSON.stringify(result));
+      debugLog('[Interceptor] result:', JSON.stringify(result));
       return result;
     });
   }
@@ -318,14 +354,14 @@ export class VirtualKeyboard {
       onDragStart(e.touches[0].clientY);
     }, { passive: false });
 
-    document.addEventListener('touchmove', (e) => {
+    this.addEventListenerWithCleanup(document, 'touchmove', (e) => {
       if (this.isDragging) {
         e.preventDefault();
         onDragMove(e.touches[0].clientY);
       }
     }, { passive: false });
 
-    document.addEventListener('touchend', onDragEnd);
+    this.addEventListenerWithCleanup(document, 'touchend', onDragEnd);
 
     // Mouse events
     handle.addEventListener('mousedown', (e) => {
@@ -333,14 +369,14 @@ export class VirtualKeyboard {
       onDragStart(e.clientY);
     });
 
-    document.addEventListener('mousemove', (e) => {
+    this.addEventListenerWithCleanup(document, 'mousemove', (e) => {
       if (this.isDragging) {
         e.preventDefault();
         onDragMove(e.clientY);
       }
     });
 
-    document.addEventListener('mouseup', onDragEnd);
+    this.addEventListenerWithCleanup(document, 'mouseup', onDragEnd);
   }
 
   private render() {
@@ -374,17 +410,17 @@ export class VirtualKeyboard {
     
     // Handle IME composition events
     this.inputArea.addEventListener('compositionstart', (e) => {
-      console.log('[IME] compositionstart:', e.data);
+      debugLog('[IME] compositionstart:', e.data);
       this.isComposing = true;
     });
     
     this.inputArea.addEventListener('compositionend', (e) => {
-      console.log('[IME] compositionend:', e.data);
+      debugLog('[IME] compositionend:', e.data);
       // Use setTimeout to ensure this runs after any pending keydown event
       // This fixes Chrome's event order issue where input fires before compositionend
       setTimeout(() => {
         this.isComposing = false;
-        console.log('[IME] isComposing set to false (after timeout)');
+        debugLog('[IME] isComposing set to false (after timeout)');
       }, 0);
     });
     
@@ -392,11 +428,11 @@ export class VirtualKeyboard {
     this.inputArea.addEventListener('keydown', (e) => {
       // keyCode 229 means IME is processing the key
       const isIMEProcessing = e.keyCode === 229;
-      console.log('[Keyboard] keydown:', e.key, 'keyCode:', e.keyCode, 'e.isComposing:', e.isComposing, 'this.isComposing:', this.isComposing, 'isIMEProcessing:', isIMEProcessing);
+      debugLog('[Keyboard] keydown:', e.key, 'keyCode:', e.keyCode, 'e.isComposing:', e.isComposing, 'this.isComposing:', this.isComposing, 'isIMEProcessing:', isIMEProcessing);
       
       // Skip if IME is composing - use multiple checks for compatibility
       if (e.isComposing || this.isComposing || isIMEProcessing) {
-        console.log('[Keyboard] skipping - IME active');
+        debugLog('[Keyboard] skipping - IME active');
         return;
       }
       
@@ -412,7 +448,7 @@ export class VirtualKeyboard {
     // Auto-resize textarea
     this.inputArea.addEventListener('input', (e) => {
       const target = e.target as HTMLTextAreaElement;
-      console.log('[Keyboard] input event, value:', target.value, 'isComposing:', this.isComposing);
+      debugLog('[Keyboard] input event, value:', target.value, 'isComposing:', this.isComposing);
       if (this.isMultilineMode && this.inputArea) {
         this.inputArea.style.height = 'auto';
         this.inputArea.style.height = Math.min(this.inputArea.scrollHeight, 100) + 'px';
@@ -494,6 +530,12 @@ export class VirtualKeyboard {
           this.sendWithModifiers(key.key);
         }
       });
+      // Cache Ctrl/Alt button references for updateModifierButtons
+      if (key.label === 'Ctrl') {
+        this.ctrlButton = btn;
+      } else if (key.label === 'Alt') {
+        this.altButton = btn;
+      }
       specialRow.appendChild(btn);
     });
     this.container.appendChild(specialRow);
@@ -567,24 +609,23 @@ export class VirtualKeyboard {
   }
 
   private updateModifierButtons() {
-    const buttons = this.container.querySelectorAll('.keyboard-btn');
-    buttons.forEach((btn) => {
-      if (btn.textContent === 'Ctrl') {
-        btn.classList.toggle('active', this.ctrlActive);
-      } else if (btn.textContent === 'Alt') {
-        btn.classList.toggle('active', this.altActive);
-      }
-    });
+    // Use cached button references instead of querying all buttons
+    if (this.ctrlButton) {
+      this.ctrlButton.classList.toggle('active', this.ctrlActive);
+    }
+    if (this.altButton) {
+      this.altButton.classList.toggle('active', this.altActive);
+    }
   }
 
   private sendInputCommand() {
     if (!this.inputArea) return;
     // Fix: Replace non-breaking space (U+00A0) with regular space
     const command = this.inputArea.value.replace(/\u00A0/g, ' ');
-    console.log('[Keyboard] sendInputCommand called, value:', JSON.stringify(command), 'isComposing:', this.isComposing);
+    debugLog('[Keyboard] sendInputCommand called, value:', JSON.stringify(command), 'isComposing:', this.isComposing);
     if (command.trim()) {
       // Send command with newline
-      console.log('[Keyboard] sending via sendKey:', JSON.stringify(command + '\n'));
+      debugLog('[Keyboard] sending via sendKey:', JSON.stringify(command + '\n'));
       this.terminal.sendKey(command + '\n');
       this.inputArea.value = '';
       // Reset height in multiline mode
@@ -592,7 +633,30 @@ export class VirtualKeyboard {
         this.inputArea.style.height = '';
       }
     } else {
-      console.log('[Keyboard] command is empty or whitespace, not sending');
+      debugLog('[Keyboard] command is empty or whitespace, not sending');
     }
+  }
+
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    
+    // Clean up all registered event listeners
+    this.eventCleanups.forEach(cleanup => cleanup());
+    this.eventCleanups = [];
+    
+    // Remove minimized button if present
+    if (this.minimizedButton) {
+      this.minimizedButton.remove();
+      this.minimizedButton = null;
+    }
+    
+    // Clear container
+    this.container.innerHTML = '';
+    
+    // Clear references
+    this.inputArea = null;
+    this.ctrlButton = null;
+    this.altButton = null;
   }
 }
