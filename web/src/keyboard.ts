@@ -321,7 +321,7 @@ export class VirtualKeyboard {
   }
 
   private setupDrag() {
-    const handle = this.container.querySelector('.keyboard-header') as HTMLElement;
+    const handle = this.container.querySelector('.keyboard-drag-handle') as HTMLElement;
     if (!handle) return;
 
     const onDragStart = (clientY: number) => {
@@ -383,25 +383,19 @@ export class VirtualKeyboard {
     this.container.innerHTML = '';
     this.container.className = 'virtual-keyboard';
 
-    // Header with drag handle only
-    const header = document.createElement('div');
-    header.className = 'keyboard-header';
-    
-    // Drag handle
-    const dragHandle = document.createElement('div');
-    dragHandle.className = 'keyboard-drag-handle';
-    header.appendChild(dragHandle);
-    
-    this.container.appendChild(header);
-
-    // Input row with textarea, mode toggle and send button
+    // === Row 1: Drag handle + Input + Function buttons ===
     const inputRow = document.createElement('div');
     inputRow.className = 'keyboard-row input-row';
+    
+    // Drag handle (integrated into row 1)
+    const dragHandle = document.createElement('div');
+    dragHandle.className = 'keyboard-drag-handle';
+    inputRow.appendChild(dragHandle);
     
     // Create textarea for input
     this.inputArea = document.createElement('textarea');
     this.inputArea.className = 'command-input';
-    this.inputArea.placeholder = 'Enter command...';
+    this.inputArea.placeholder = 'Command...';
     this.inputArea.rows = 1;
     this.inputArea.setAttribute('autocomplete', 'off');
     this.inputArea.setAttribute('autocorrect', 'off');
@@ -416,8 +410,6 @@ export class VirtualKeyboard {
     
     this.inputArea.addEventListener('compositionend', (e) => {
       debugLog('[IME] compositionend:', e.data);
-      // Use setTimeout to ensure this runs after any pending keydown event
-      // This fixes Chrome's event order issue where input fires before compositionend
       setTimeout(() => {
         this.isComposing = false;
         debugLog('[IME] isComposing set to false (after timeout)');
@@ -426,11 +418,9 @@ export class VirtualKeyboard {
     
     // Handle Enter key
     this.inputArea.addEventListener('keydown', (e) => {
-      // keyCode 229 means IME is processing the key
       const isIMEProcessing = e.keyCode === 229;
       debugLog('[Keyboard] keydown:', e.key, 'keyCode:', e.keyCode, 'e.isComposing:', e.isComposing, 'this.isComposing:', this.isComposing, 'isIMEProcessing:', isIMEProcessing);
       
-      // Skip if IME is composing - use multiple checks for compatibility
       if (e.isComposing || this.isComposing || isIMEProcessing) {
         debugLog('[Keyboard] skipping - IME active');
         return;
@@ -441,7 +431,6 @@ export class VirtualKeyboard {
           e.preventDefault();
           this.sendInputCommand();
         }
-        // In multiline mode, allow normal Enter behavior
       }
     });
     
@@ -457,7 +446,38 @@ export class VirtualKeyboard {
     
     inputRow.appendChild(this.inputArea);
     
-    // Mode toggle button
+    // Lock button (prevents soft keyboard from appearing)
+    const lockBtn = document.createElement('button');
+    lockBtn.className = 'keyboard-btn func-btn lock-btn';
+    lockBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+    lockBtn.title = '锁定键盘';
+    
+    const updateLockState = (newLockState: boolean, focusInput: boolean) => {
+      this.terminal.setKeyboardLocked(newLockState);
+      lockBtn.classList.toggle('active', newLockState);
+      // Locked: closed lock, Unlocked: open lock
+      lockBtn.innerHTML = newLockState 
+        ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 5-5 5 5 0 0 1 5 5"/></svg>';
+      if (focusInput && !newLockState && this.inputArea) {
+        this.inputArea.focus();
+      }
+    };
+    
+    let lockTouchHandled = false;
+    lockBtn.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      lockTouchHandled = true;
+      updateLockState(!this.terminal.isKeyboardLocked(), true);
+    }, { passive: false });
+    lockBtn.addEventListener('click', (e) => {
+      if (lockTouchHandled) { lockTouchHandled = false; return; }
+      e.preventDefault();
+      updateLockState(!this.terminal.isKeyboardLocked(), true);
+    });
+    inputRow.appendChild(lockBtn);
+    
+    // Mode toggle button (multiline)
     const modeBtn = this.createButton('\u2261', () => {
       this.isMultilineMode = !this.isMultilineMode;
       modeBtn.classList.toggle('active', this.isMultilineMode);
@@ -471,97 +491,72 @@ export class VirtualKeyboard {
         }
       }
     });
-    modeBtn.className = 'keyboard-btn mode-btn';
-    modeBtn.title = 'Toggle multi-line mode';
+    modeBtn.className = 'keyboard-btn func-btn mode-btn';
+    modeBtn.title = '多行模式';
     inputRow.appendChild(modeBtn);
     
     // Send button
     const sendBtn = this.createButton('\u27A4', () => {
       this.sendInputCommand();
     });
-    sendBtn.className = 'keyboard-btn send-btn';
-    sendBtn.title = 'Send command';
+    sendBtn.className = 'keyboard-btn func-btn send-btn';
+    sendBtn.title = '发送';
     inputRow.appendChild(sendBtn);
     
-    this.container.appendChild(inputRow);
-
-    // Quick commands row with logout button and minimize button
-    const quickRow = this.createRow('quick-row');
-    
-    // Logout button
-    const logoutBtn = this.createButton('Logout', () => {
-      this.onLogout();
-    });
-    logoutBtn.classList.add('quick-btn', 'logout-btn');
-    quickRow.appendChild(logoutBtn);
-    
-    // Keyboard lock button (prevents soft keyboard from appearing)
-    const lockBtn = document.createElement('button');
-    lockBtn.className = 'keyboard-btn quick-btn lock-btn';
-    lockBtn.textContent = '🔓';
-    lockBtn.title = '锁定键盘';
-    
-    const updateLockState = (newLockState: boolean, focusInput: boolean) => {
-      debugLog('[Lock] updateLockState called, newLockState:', newLockState, 'focusInput:', focusInput);
-      this.terminal.setKeyboardLocked(newLockState);
-      lockBtn.classList.toggle('active', newLockState);
-      lockBtn.textContent = newLockState ? '🔒' : '🔓';
-      lockBtn.title = newLockState ? '解锁键盘' : '锁定键盘';
-      
-      // On unlock, focus the input area to trigger soft keyboard
-      if (focusInput && !newLockState && this.inputArea) {
-        debugLog('[Lock] focusing inputArea');
-        this.inputArea.focus();
-        debugLog('[Lock] inputArea focused, activeElement:', document.activeElement);
-      }
-    };
-    
-    // Track if touch handled to avoid double triggering
-    let touchHandled = false;
-    
-    // touchend is the key event for iOS Safari to recognize user gesture for keyboard
-    lockBtn.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      touchHandled = true;
-      const newLockState = !this.terminal.isKeyboardLocked();
-      updateLockState(newLockState, true);
-    }, { passive: false });
-    
-    // Fallback click for non-touch devices
-    lockBtn.addEventListener('click', (e) => {
-      if (touchHandled) {
-        touchHandled = false;
-        return;
-      }
-      e.preventDefault();
-      const newLockState = !this.terminal.isKeyboardLocked();
-      updateLockState(newLockState, true);
-    });
-    quickRow.appendChild(lockBtn);
-    
-    quickCommands.forEach((cmd) => {
-      const btn = this.createButton(cmd.label, () => {
-        this.terminal.sendKey(cmd.key);
-      });
-      btn.classList.add('quick-btn');
-      quickRow.appendChild(btn);
-    });
-    
-    // Minimize button at the end of quick row (zoom icon)
+    // Minimize button
     const minimizeBtn = document.createElement('button');
-    minimizeBtn.className = 'keyboard-btn minimize-btn';
-    minimizeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
-    minimizeBtn.title = '缩小工具栏';
+    minimizeBtn.className = 'keyboard-btn func-btn minimize-btn';
+    minimizeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
+    minimizeBtn.title = '最小化';
     minimizeBtn.addEventListener('click', (e) => {
       e.preventDefault();
       this.minimize();
     });
-    quickRow.appendChild(minimizeBtn);
+    inputRow.appendChild(minimizeBtn);
     
-    this.container.appendChild(quickRow);
+    this.container.appendChild(inputRow);
 
-    // Special keys row
-    const specialRow = this.createRow('special-row');
+    // === Row 2: Shortcuts (horizontally scrollable) ===
+    const shortcutsRow = document.createElement('div');
+    shortcutsRow.className = 'keyboard-row shortcuts-row';
+    
+    const shortcutsScroll = document.createElement('div');
+    shortcutsScroll.className = 'shortcuts-scroll';
+    
+    // Logout button (icon)
+    const logoutBtn = document.createElement('button');
+    logoutBtn.className = 'keyboard-btn shortcut-btn logout-btn';
+    logoutBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+    logoutBtn.title = '退出登录';
+    
+    let logoutTouchMove = false;
+    let logoutTouchStartX = 0;
+    let logoutTouchStartY = 0;
+    logoutBtn.addEventListener('touchstart', (e) => {
+      logoutTouchStartX = e.touches[0].clientX;
+      logoutTouchStartY = e.touches[0].clientY;
+      logoutTouchMove = false;
+    }, { passive: true });
+    logoutBtn.addEventListener('touchmove', (e) => {
+      const dx = Math.abs(e.touches[0].clientX - logoutTouchStartX);
+      const dy = Math.abs(e.touches[0].clientY - logoutTouchStartY);
+      if (dx > 10 || dy > 10) logoutTouchMove = true;
+    }, { passive: true });
+    logoutBtn.addEventListener('touchend', (e) => {
+      if (!logoutTouchMove) {
+        e.preventDefault();
+        this.onLogout();
+      }
+    });
+    logoutBtn.addEventListener('click', (e) => {
+      if (e.detail !== 0) {
+        e.preventDefault();
+        this.onLogout();
+      }
+    });
+    shortcutsScroll.appendChild(logoutBtn);
+    
+    // Special keys
     specialKeys.forEach((key) => {
       const btn = this.createButton(key.label, () => {
         if (key.label === 'Ctrl') {
@@ -574,26 +569,32 @@ export class VirtualKeyboard {
           this.sendWithModifiers(key.key);
         }
       });
-      // Cache Ctrl/Alt button references for updateModifierButtons
-      if (key.label === 'Ctrl') {
-        this.ctrlButton = btn;
-      } else if (key.label === 'Alt') {
-        this.altButton = btn;
-      }
-      specialRow.appendChild(btn);
+      btn.classList.add('shortcut-btn');
+      if (key.label === 'Ctrl') this.ctrlButton = btn;
+      else if (key.label === 'Alt') this.altButton = btn;
+      shortcutsScroll.appendChild(btn);
     });
-    this.container.appendChild(specialRow);
-
-    // Arrow keys row
-    const arrowRow = this.createRow('arrow-row');
+    
+    // Arrow keys
     arrowKeys.forEach((key) => {
       const btn = this.createButton(key.label, () => {
         this.terminal.sendKey(key.key);
       });
-      btn.classList.add('arrow-btn');
-      arrowRow.appendChild(btn);
+      btn.classList.add('shortcut-btn');
+      shortcutsScroll.appendChild(btn);
     });
-    this.container.appendChild(arrowRow);
+    
+    // Quick commands
+    quickCommands.forEach((cmd) => {
+      const btn = this.createButton(cmd.label, () => {
+        this.terminal.sendKey(cmd.key);
+      });
+      btn.classList.add('shortcut-btn', 'quick-btn');
+      shortcutsScroll.appendChild(btn);
+    });
+    
+    shortcutsRow.appendChild(shortcutsScroll);
+    this.container.appendChild(shortcutsRow);
   }
 
   private createRow(className: string): HTMLElement {
@@ -607,22 +608,40 @@ export class VirtualKeyboard {
     btn.className = 'keyboard-btn';
     btn.textContent = label;
     
-    // Use only one event to prevent double triggering on touch devices
-    let handled = false;
+    // Track touch to distinguish tap from scroll
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let isTouchMove = false;
     
     btn.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      handled = true;
-      onClick();
-    }, { passive: false });
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      isTouchMove = false;
+    }, { passive: true });
     
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      // Only handle click if not already handled by touch
-      if (!handled) {
+    btn.addEventListener('touchmove', (e) => {
+      const dx = Math.abs(e.touches[0].clientX - touchStartX);
+      const dy = Math.abs(e.touches[0].clientY - touchStartY);
+      // If moved more than 10px, consider it a scroll
+      if (dx > 10 || dy > 10) {
+        isTouchMove = true;
+      }
+    }, { passive: true });
+    
+    btn.addEventListener('touchend', (e) => {
+      if (!isTouchMove) {
+        e.preventDefault();
         onClick();
       }
-      handled = false;
+    });
+    
+    // Fallback for non-touch devices
+    btn.addEventListener('click', (e) => {
+      // Only handle if not from touch
+      if (e.detail !== 0) {  // detail is 0 for keyboard/programmatic clicks
+        e.preventDefault();
+        onClick();
+      }
     });
     
     return btn;

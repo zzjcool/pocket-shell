@@ -15,7 +15,6 @@ install-deps:
 # Build frontend
 web:
 	cd web && npm run build
-	cp web/static/index.html web/dist/
 
 # Build backend (requires frontend to be built first)
 server: web

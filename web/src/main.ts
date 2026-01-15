@@ -1,4 +1,5 @@
 import '@xterm/xterm/css/xterm.css';
+import './types'; // Import for Wake Lock API type declarations
 import { api } from './api';
 import { TerminalManager } from './terminal';
 import { VirtualKeyboard } from './keyboard';
@@ -7,6 +8,7 @@ import './debug';  // Initialize debug panel if ?debug=1
 class App {
   private terminal: TerminalManager | null = null;
   private keyboard: VirtualKeyboard | null = null;
+  private wakeLock: WakeLockSentinel | null = null;
 
   async init() {
     // Check if already logged in
@@ -90,6 +92,9 @@ class App {
 
       await this.terminal.connect(sessionId);
       this.terminal.focus();
+
+      // Request wake lock to keep screen on
+      await this.requestWakeLock();
     } catch (err) {
       console.error('Failed to connect:', err);
       api.setToken(null);
@@ -101,12 +106,45 @@ class App {
   }
 
   private async logout() {
+    await this.releaseWakeLock();
     this.terminal?.dispose();
     this.terminal = null;
     this.keyboard?.dispose();
     this.keyboard = null;
     await api.logout();
     this.showLoginView();
+  }
+
+  private async requestWakeLock() {
+    if (!('wakeLock' in navigator)) {
+      console.log('Wake Lock API not supported');
+      return;
+    }
+
+    try {
+      this.wakeLock = await navigator.wakeLock.request('screen');
+      console.log('Wake Lock acquired');
+
+      // Re-acquire wake lock when page becomes visible again
+      document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    } catch (err) {
+      console.error('Failed to acquire Wake Lock:', err);
+    }
+  }
+
+  private handleVisibilityChange = async () => {
+    if (document.visibilityState === 'visible' && this.terminal) {
+      await this.requestWakeLock();
+    }
+  };
+
+  private async releaseWakeLock() {
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    if (this.wakeLock) {
+      await this.wakeLock.release();
+      this.wakeLock = null;
+      console.log('Wake Lock released');
+    }
   }
 }
 

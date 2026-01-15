@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --minify --outfile=dist/app.js",
+    "build": "node build.js",
     "dev": "esbuild src/main.ts --bundle --outfile=dist/app.js --watch"
   },
   "devDependencies": {

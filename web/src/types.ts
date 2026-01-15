@@ -17,3 +17,20 @@ export interface ResizeData {
   rows: number;
   cols: number;
 }
+
+// Wake Lock API types (not yet in all TypeScript versions)
+declare global {
+  interface Navigator {
+    wakeLock?: WakeLock;
+  }
+
+  interface WakeLock {
+    request(type: 'screen'): Promise<WakeLockSentinel>;
+  }
+
+  interface WakeLockSentinel extends EventTarget {
+    readonly released: boolean;
+    readonly type: 'screen';
+    release(): Promise<void>;
+  }
+}
