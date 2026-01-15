@@ -464,23 +464,43 @@
       cursor: pointer;
       touch-action: manipulation;
       user-select: none;
-      transition: all 0.1s ease;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.1s ease;
     }
 
     .keyboard-btn:hover {
       background: #2d3748;
     }
 
-    .keyboard-btn:active {
+    .keyboard-btn:active:not(.active):not(.locked) {
       background: #1a202c;
       transform: scale(0.96);
     }
 
     .keyboard-btn.active {
-      background: #4ecdc4;
+      background: #4ecdc4 !important;
       color: #0f172a;
       border-color: #4ecdc4;
       font-weight: 600;
+    }
+
+    /* Keep active style when button with .active class is pressed */
+    .keyboard-btn.active:active {
+      background: #3dbdb5 !important;
+      transform: scale(0.96);
+    }
+
+    /* Locked modifier state - different color to distinguish from single-press active */
+    .keyboard-btn.locked {
+      background: #f97316 !important;
+      color: #0f172a;
+      border-color: #f97316;
+      font-weight: 600;
+    }
+
+    .keyboard-btn.locked:active {
+      background: #ea580c !important;
+      transform: scale(0.96);
     }
 
     /* Special keys in shortcuts row */

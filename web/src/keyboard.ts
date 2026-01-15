@@ -44,6 +44,8 @@ export class VirtualKeyboard {
   private onLogout: () => void;
   private ctrlActive = false;
   private altActive = false;
+  private ctrlLocked = false;  // Long-press to lock Ctrl
+  private altLocked = false;   // Long-press to lock Alt
   private isDragging = false;
   private isDraggingMinimized = false;  // Separate state for minimized button drag
   private hasDragged = false;  // Track if actual movement occurred
@@ -275,12 +277,12 @@ export class VirtualKeyboard {
         altApplied = true;
       }
 
-      // Only reset modifier state if it was actually applied
-      if (ctrlApplied) {
+      // Only reset modifier state if it was actually applied AND not locked
+      if (ctrlApplied && !this.ctrlLocked) {
         this.ctrlActive = false;
         this.updateModifierButtons();
       }
-      if (altApplied) {
+      if (altApplied && !this.altLocked) {
         this.altActive = false;
         this.updateModifierButtons();
       }
@@ -537,21 +539,22 @@ export class VirtualKeyboard {
     
     // Special keys
     specialKeys.forEach((key) => {
-      const btn = this.createButton(key.label, () => {
-        if (key.label === 'Ctrl') {
-          this.ctrlActive = !this.ctrlActive;
-          btn.classList.toggle('active', this.ctrlActive);
-        } else if (key.label === 'Alt') {
-          this.altActive = !this.altActive;
-          btn.classList.toggle('active', this.altActive);
-        } else if (key.key) {
-          this.sendWithModifiers(key.key);
-        }
-      });
-      btn.classList.add('shortcut-btn');
-      if (key.label === 'Ctrl') this.ctrlButton = btn;
-      else if (key.label === 'Alt') this.altButton = btn;
-      shortcutsScroll.appendChild(btn);
+      if (key.label === 'Ctrl' || key.label === 'Alt') {
+        // Ctrl/Alt with long-press lock support
+        const btn = this.createModifierButton(key.label, key.label === 'Ctrl');
+        btn.classList.add('shortcut-btn');
+        if (key.label === 'Ctrl') this.ctrlButton = btn;
+        else this.altButton = btn;
+        shortcutsScroll.appendChild(btn);
+      } else {
+        const btn = this.createButton(key.label, () => {
+          if (key.key) {
+            this.sendWithModifiers(key.key);
+          }
+        });
+        btn.classList.add('shortcut-btn');
+        shortcutsScroll.appendChild(btn);
+      }
     });
     
     // Arrow keys
@@ -620,6 +623,97 @@ export class VirtualKeyboard {
     return btn;
   }
 
+  // Create modifier button (Ctrl/Alt) with double-tap lock support
+  private createModifierButton(label: string, isCtrl: boolean): HTMLElement {
+    const btn = document.createElement('button');
+    btn.className = 'keyboard-btn';
+    btn.textContent = label;
+    
+    const DOUBLE_TAP_DELAY = 300; // ms
+    let lastTapTime = 0;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let isTouchMove = false;
+    
+    const getActive = () => isCtrl ? this.ctrlActive : this.altActive;
+    const setActive = (val: boolean) => {
+      if (isCtrl) this.ctrlActive = val;
+      else this.altActive = val;
+    };
+    const getLocked = () => isCtrl ? this.ctrlLocked : this.altLocked;
+    const setLocked = (val: boolean) => {
+      if (isCtrl) this.ctrlLocked = val;
+      else this.altLocked = val;
+    };
+    
+    const updateButtonState = () => {
+      const active = getActive();
+      const locked = getLocked();
+      btn.classList.toggle('active', active && !locked);
+      btn.classList.toggle('locked', locked);
+    };
+    
+    const handleTap = () => {
+      const now = Date.now();
+      const isDoubleTap = (now - lastTapTime) < DOUBLE_TAP_DELAY;
+      lastTapTime = now;
+      
+      if (isDoubleTap) {
+        // Double tap: toggle lock
+        if (getLocked()) {
+          setLocked(false);
+          setActive(false);
+        } else {
+          setLocked(true);
+          setActive(true);
+        }
+      } else {
+        // Single tap
+        if (getLocked()) {
+          // If locked, tap unlocks
+          setLocked(false);
+          setActive(false);
+        } else {
+          // Toggle active state
+          setActive(!getActive());
+        }
+      }
+      updateButtonState();
+    };
+    
+    // Touch events
+    btn.addEventListener('touchstart', (e) => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      isTouchMove = false;
+    }, { passive: true });
+    
+    btn.addEventListener('touchmove', (e) => {
+      const dx = Math.abs(e.touches[0].clientX - touchStartX);
+      const dy = Math.abs(e.touches[0].clientY - touchStartY);
+      if (dx > 10 || dy > 10) {
+        isTouchMove = true;
+      }
+    }, { passive: true });
+    
+    btn.addEventListener('touchend', (e) => {
+      if (!isTouchMove) {
+        e.preventDefault();
+        handleTap();
+      }
+    });
+    
+    // Mouse events for non-touch devices
+    btn.addEventListener('click', (e) => {
+      if (e.detail !== 0) {
+        e.preventDefault();
+        handleTap();
+      }
+    });
+    
+    return btn;
+  }
+
   private sendWithModifiers(key: string) {
     let modifiedKey = key;
 
@@ -631,14 +725,20 @@ export class VirtualKeyboard {
           modifiedKey = String.fromCharCode(code - 64);
         }
       }
-      this.ctrlActive = false;
-      this.updateModifierButtons();
+      // Only reset if not locked
+      if (!this.ctrlLocked) {
+        this.ctrlActive = false;
+        this.updateModifierButtons();
+      }
     }
 
     if (this.altActive) {
       modifiedKey = '\x1b' + modifiedKey;
-      this.altActive = false;
-      this.updateModifierButtons();
+      // Only reset if not locked
+      if (!this.altLocked) {
+        this.altActive = false;
+        this.updateModifierButtons();
+      }
     }
 
     this.terminal.sendKey(modifiedKey);
@@ -647,10 +747,12 @@ export class VirtualKeyboard {
   private updateModifierButtons() {
     // Use cached button references instead of querying all buttons
     if (this.ctrlButton) {
-      this.ctrlButton.classList.toggle('active', this.ctrlActive);
+      this.ctrlButton.classList.toggle('active', this.ctrlActive && !this.ctrlLocked);
+      this.ctrlButton.classList.toggle('locked', this.ctrlLocked);
     }
     if (this.altButton) {
-      this.altButton.classList.toggle('active', this.altActive);
+      this.altButton.classList.toggle('active', this.altActive && !this.altLocked);
+      this.altButton.classList.toggle('locked', this.altLocked);
     }
   }
 
