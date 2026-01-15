@@ -52,7 +52,7 @@ export class VirtualKeyboard {
   private hasDragged = false;  // Track if actual movement occurred
   private dragStartY = 0;
   private dragStartX = 0;
-  private dragStartBottom = 0;
+  private dragStartTop = 0;
   private dragStartRight = 0;
   private isMinimized = false;
   private minimizedButton: HTMLElement | null = null;
@@ -73,6 +73,8 @@ export class VirtualKeyboard {
     this.setupInputInterceptor();
     this.setupGlobalDragListeners();
     this.setupResizeListener();
+    // Start minimized by default
+    this.minimize();
   }
   
   private addEventListenerWithCleanup<K extends keyof WindowEventMap>(
@@ -98,21 +100,19 @@ export class VirtualKeyboard {
   }
 
   private setupResizeListener() {
-    // Handle window resize to keep keyboard/minimized button in bounds
+    // Handle window resize to keep minimized button in bounds
     const resizeHandler = () => {
       if (this.isMinimized && this.minimizedButton) {
-        // Clamp minimized button position
-        const currentBottom = parseInt(this.minimizedButton.style.bottom) || 10;
+        // Clamp minimized button position (using top positioning)
+        const currentTop = parseInt(this.minimizedButton.style.top) || 10;
         const currentRight = parseInt(this.minimizedButton.style.right) || 10;
-        const maxBottom = window.innerHeight - 60;
+        const maxTop = window.innerHeight - 60;
         const maxRight = window.innerWidth - 60;
         
-        this.minimizedButton.style.bottom = `${Math.max(10, Math.min(maxBottom, currentBottom))}px`;
+        this.minimizedButton.style.top = `${Math.max(10, Math.min(maxTop, currentTop))}px`;
         this.minimizedButton.style.right = `${Math.max(10, Math.min(maxRight, currentRight))}px`;
-      } else if (!this.isMinimized) {
-        // Clamp keyboard position
-        this.clampPosition();
       }
+      // Keyboard position is fixed via CSS, no need to clamp
     };
     this.addEventListenerWithCleanup(window, 'resize', resizeHandler);
   }
@@ -149,7 +149,7 @@ export class VirtualKeyboard {
   private handleMinimizedDragMove(clientX: number, clientY: number) {
     if (!this.minimizedButton) return;
     
-    const deltaY = this.dragStartY - clientY;
+    const deltaY = clientY - this.dragStartY;
     const deltaX = this.dragStartX - clientX;
     
     // Check if actually moved (more than 5px)
@@ -157,16 +157,16 @@ export class VirtualKeyboard {
       this.hasDragged = true;
     }
     
-    const newBottom = Math.max(10, Math.min(
+    const newTop = Math.max(10, Math.min(
       window.innerHeight - 60,
-      this.dragStartBottom + deltaY
+      this.dragStartTop + deltaY
     ));
     const newRight = Math.max(10, Math.min(
       window.innerWidth - 60,
       this.dragStartRight + deltaX
     ));
     
-    this.minimizedButton.style.bottom = `${newBottom}px`;
+    this.minimizedButton.style.top = `${newTop}px`;
     this.minimizedButton.style.right = `${newRight}px`;
   }
 
@@ -192,10 +192,8 @@ export class VirtualKeyboard {
     this.minimizedButton.className = 'keyboard-minimized';
     this.minimizedButton.title = '展开工具栏';
     
-    // Position at same bottom as keyboard was
-    const computedStyle = getComputedStyle(this.container);
-    const bottom = parseInt(computedStyle.bottom) || 10;
-    this.minimizedButton.style.bottom = `${bottom}px`;
+    // Position at top right by default
+    this.minimizedButton.style.top = '10px';
     this.minimizedButton.style.right = '10px';
     
     // Add to parent
@@ -210,37 +208,12 @@ export class VirtualKeyboard {
     
     // Remove minimized button
     if (this.minimizedButton) {
-      // Transfer position from minimized button to keyboard
-      // But clamp it to ensure the keyboard stays within screen bounds
-      const buttonBottom = parseInt(this.minimizedButton.style.bottom) || 10;
-      
       this.minimizedButton.remove();
       this.minimizedButton = null;
-      
-      // Show the container first so we can measure its height
-      this.container.style.display = '';
-      
-      // Clamp the bottom position to ensure keyboard stays on screen
-      const maxBottom = window.innerHeight - this.container.offsetHeight - 10;
-      const newBottom = Math.max(0, Math.min(maxBottom, buttonBottom));
-      this.container.style.bottom = `${newBottom}px`;
-    } else {
-      this.container.style.display = '';
     }
     
-    // Ensure position is valid after restore
-    this.clampPosition();
-  }
-  
-  private clampPosition() {
-    // Ensure the keyboard stays within screen bounds
-    const currentBottom = parseInt(getComputedStyle(this.container).bottom) || 0;
-    const maxBottom = window.innerHeight - this.container.offsetHeight - 10;
-    
-    if (currentBottom > maxBottom || currentBottom < 0) {
-      const clampedBottom = Math.max(0, Math.min(maxBottom, currentBottom));
-      this.container.style.bottom = `${clampedBottom}px`;
-    }
+    // Show the container (keyboard is positioned at top via CSS)
+    this.container.style.display = '';
   }
 
   private setupMinimizedDrag() {
@@ -253,7 +226,7 @@ export class VirtualKeyboard {
       this.hasDragged = false;
       this.dragStartY = clientY;
       this.dragStartX = clientX;
-      this.dragStartBottom = parseInt(btn.style.bottom) || 10;
+      this.dragStartTop = parseInt(btn.style.top) || 10;
       this.dragStartRight = parseInt(btn.style.right) || 10;
       btn.classList.add('dragging');
     };
@@ -328,18 +301,18 @@ export class VirtualKeyboard {
       this.isDragging = true;
       this.dragStartY = clientY;
       const computedStyle = getComputedStyle(this.container);
-      this.dragStartBottom = parseInt(computedStyle.bottom) || 10;
+      this.dragStartTop = parseInt(computedStyle.top) || 10;
       this.container.classList.add('dragging');
     };
 
     const onDragMove = (clientY: number) => {
       if (!this.isDragging) return;
-      const deltaY = this.dragStartY - clientY;
-      const newBottom = Math.max(0, Math.min(
+      const deltaY = clientY - this.dragStartY;
+      const newTop = Math.max(0, Math.min(
         window.innerHeight - this.container.offsetHeight - 10,
-        this.dragStartBottom + deltaY
+        this.dragStartTop + deltaY
       ));
-      this.container.style.bottom = `${newBottom}px`;
+      this.container.style.top = `${newTop}px`;
     };
 
     const onDragEnd = () => {

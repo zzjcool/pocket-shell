@@ -65,11 +65,13 @@ class App {
 
   private async showTerminalView() {
     const app = document.getElementById('app')!;
+    // Note: keyboard-area is outside terminal-container so it won't move
+    // when the terminal is translated up for mobile keyboard
     app.innerHTML = `
       <div class="terminal-container">
         <div id="terminal-area"></div>
-        <div id="keyboard-area"></div>
       </div>
+      <div id="keyboard-area"></div>
     `;
 
     const terminalArea = document.getElementById('terminal-area')!;
