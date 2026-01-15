@@ -2,6 +2,7 @@ import 'xterm/css/xterm.css';
 import { api } from './api';
 import { TerminalManager } from './terminal';
 import { VirtualKeyboard } from './keyboard';
+import './debug';  // Initialize debug panel if ?debug=1
 
 class App {
   private terminal: TerminalManager | null = null;

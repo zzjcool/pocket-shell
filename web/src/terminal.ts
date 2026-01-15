@@ -23,6 +23,10 @@ export class TerminalManager {
   private lastRows = 0;
   private lastCols = 0;
   private inputInterceptor: ((data: string) => string | null) | null = null;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private reconnectDelay = 1000;
+  private isReconnecting = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -32,6 +36,8 @@ export class TerminalManager {
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       scrollback: 1000,
       overviewRulerWidth: 0,
+      // Improve IME support for third-party input methods
+      allowProposedApi: true,
       theme: {
         background: '#1a1a2e',
         foreground: '#eaeaea',
@@ -64,6 +70,73 @@ export class TerminalManager {
     this.terminal.open(container);
     this.fit();
 
+    // Workaround for iOS Safari predictive text and mobile IME issues
+    // xterm.js doesn't always fire onData correctly on mobile browsers
+    const xtermTextarea = container.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement;
+    let isComposing = false;
+    let lastSentData = '';
+    let flushTimeout: ReturnType<typeof setTimeout> | null = null;
+    
+    const clearFlushTimeout = () => {
+      if (flushTimeout) {
+        clearTimeout(flushTimeout);
+        flushTimeout = null;
+      }
+    };
+    
+    // Flush any pending input in textarea that xterm missed
+    const flushPendingInput = () => {
+      clearFlushTimeout();
+      if (xtermTextarea && xtermTextarea.value) {
+        const pendingValue = xtermTextarea.value;
+        console.log('[XtermTextarea] FLUSH pending input:', JSON.stringify(pendingValue));
+        this.send({ type: 'input', data: pendingValue });
+        xtermTextarea.value = '';
+      }
+    };
+    
+    if (xtermTextarea) {
+      console.log('[Terminal] Found xterm textarea, adding mobile input workaround');
+      
+      // Track composition state
+      xtermTextarea.addEventListener('compositionstart', (e) => {
+        console.log('[XtermTextarea] compositionstart:', (e as CompositionEvent).data);
+        isComposing = true;
+        clearFlushTimeout();
+      });
+      
+      xtermTextarea.addEventListener('compositionend', (e) => {
+        const data = (e as CompositionEvent).data;
+        console.log('[XtermTextarea] compositionend:', data);
+        isComposing = false;
+        // Schedule a flush to catch any missed input after composition
+        clearFlushTimeout();
+        flushTimeout = setTimeout(flushPendingInput, 150);
+      });
+      
+      xtermTextarea.addEventListener('beforeinput', (e) => {
+        const inputEvent = e as InputEvent;
+        console.log('[XtermTextarea] beforeinput:', JSON.stringify(inputEvent.data), 'inputType:', inputEvent.inputType, 'isComposing:', isComposing);
+      });
+      
+      xtermTextarea.addEventListener('input', (e) => {
+        const target = e.target as HTMLTextAreaElement;
+        const inputEvent = e as InputEvent;
+        console.log('[XtermTextarea] input:', JSON.stringify(target.value), 'inputType:', inputEvent.inputType, 'isComposing:', isComposing);
+        
+        // Skip during active composition
+        if (isComposing) {
+          return;
+        }
+        
+        // Schedule a flush - if xterm handles it via onData, the flush will find empty textarea
+        clearFlushTimeout();
+        flushTimeout = setTimeout(flushPendingInput, 150);
+      });
+    } else {
+      console.log('[Terminal] xterm textarea not found');
+    }
+
     // Handle resize with debounce using ResizeObserver
     const debouncedFit = debounce(() => this.fit(), 100);
     
@@ -76,7 +149,14 @@ export class TerminalManager {
 
     // Handle input - allow interceptor for modifier keys
     this.terminal.onData((data) => {
+      console.log('[Terminal] onData:', JSON.stringify(data), 'hasInterceptor:', !!this.inputInterceptor);
+      
+      // xterm handled this, cancel pending flush
+      clearFlushTimeout();
+      lastSentData = data;
+      
       const processed = this.inputInterceptor ? this.inputInterceptor(data) : data;
+      console.log('[Terminal] processed:', JSON.stringify(processed));
       if (processed) {
         this.send({ type: 'input', data: processed });
       }
@@ -168,9 +248,19 @@ export class TerminalManager {
     }
 
     this.sessionId = sessionId;
-    this.ws = api.createWebSocket(sessionId);
+    this.reconnectAttempts = 0;
+    this.isReconnecting = false;
+    this.doConnect();
+  }
+
+  private doConnect() {
+    if (!this.sessionId) return;
+    
+    this.ws = api.createWebSocket(this.sessionId);
 
     this.ws.onopen = () => {
+      this.reconnectAttempts = 0;
+      this.isReconnecting = false;
       // Don't clear terminal - we want to receive the refreshed screen from server
       // Trigger a resize to force fullscreen apps like htop to redraw
       this.forceRefresh();
@@ -198,11 +288,19 @@ export class TerminalManager {
       }
     };
 
-    this.ws.onclose = () => {
-      this.terminal.writeln('\r\n\x1b[31m[Connection closed]\x1b[0m');
+    this.ws.onclose = (event) => {
       if (this.pingInterval) {
         clearInterval(this.pingInterval);
         this.pingInterval = null;
+      }
+      
+      // Attempt to reconnect if not a clean close and we haven't exceeded max attempts
+      if (!event.wasClean && this.sessionId && this.reconnectAttempts < this.maxReconnectAttempts) {
+        this.attemptReconnect();
+      } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        this.terminal.writeln('\r\n\x1b[31m[Connection lost. Max reconnection attempts reached. Please refresh the page.]\x1b[0m');
+      } else {
+        this.terminal.writeln('\r\n\x1b[31m[Connection closed]\x1b[0m');
       }
     };
 
@@ -211,7 +309,30 @@ export class TerminalManager {
     };
   }
 
+  private attemptReconnect() {
+    if (this.isReconnecting || !this.sessionId) return;
+    
+    this.isReconnecting = true;
+    this.reconnectAttempts++;
+    
+    const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), 10000);
+    
+    this.terminal.writeln(`\r\n\x1b[33m[Connection lost. Reconnecting in ${delay / 1000}s... (${this.reconnectAttempts}/${this.maxReconnectAttempts})]\x1b[0m`);
+    
+    setTimeout(() => {
+      if (this.sessionId) {
+        this.doConnect();
+      }
+    }, delay);
+  }
+
   disconnect() {
+    // Clear session ID first to prevent reconnection attempts
+    const wasConnected = this.sessionId !== null;
+    this.sessionId = null;
+    this.isReconnecting = false;
+    this.reconnectAttempts = this.maxReconnectAttempts; // Prevent auto-reconnect
+    
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -220,17 +341,20 @@ export class TerminalManager {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
     }
-    this.sessionId = null;
   }
 
   private send(msg: WSMessage) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      console.log('[Terminal] send:', msg.type, JSON.stringify(msg.data));
       this.ws.send(JSON.stringify(msg));
+    } else {
+      console.log('[Terminal] send FAILED - ws not open, readyState:', this.ws?.readyState);
     }
   }
 
   // Send special key
   sendKey(key: string) {
+    console.log('[Terminal] sendKey called:', JSON.stringify(key));
     this.send({ type: 'input', data: key });
     this.terminal.focus();
   }

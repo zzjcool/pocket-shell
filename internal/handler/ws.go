@@ -67,6 +67,10 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Read from PTY and send to WebSocket
 	go func() {
 		buf := make([]byte, 4096)
+		restartCount := 0
+		const maxRestarts = 5
+		const restartDelay = 500 * time.Millisecond
+
 		for {
 			n, err := session.PTY.Read(buf)
 			if err != nil {
@@ -75,8 +79,34 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				case <-ctx.Done():
 					return
 				default:
+					// Check restart limit to prevent infinite loop
+					restartCount++
+					if restartCount > maxRestarts {
+						errorMsg := "\r\n\x1b[31m[Shell failed to restart after multiple attempts. Please reconnect.]\x1b[0m\r\n"
+						dataBytes, _ := json.Marshal(errorMsg)
+						msg := wsMessage{
+							Type: "output",
+							Data: json.RawMessage(dataBytes),
+						}
+						msgBytes, _ := json.Marshal(msg)
+						conn.Write(ctx, websocket.MessageText, msgBytes)
+						cancel()
+						return
+					}
+
+					// Add delay before restart to prevent tight loop
+					time.Sleep(restartDelay)
+
+					// Check context again after sleep
+					select {
+					case <-ctx.Done():
+						return
+					default:
+					}
+
 					// Try to restart the shell
 					if restartErr := session.RestartPTY(); restartErr != nil {
+						log.Printf("Failed to restart PTY: %v", restartErr)
 						cancel()
 						return
 					}
@@ -95,6 +125,10 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 			}
+
+			// Reset restart counter on successful read
+			restartCount = 0
+
 			if n > 0 {
 				// Properly encode the output as JSON string
 				outputStr := string(buf[:n])

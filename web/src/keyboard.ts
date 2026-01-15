@@ -195,8 +195,11 @@ export class VirtualKeyboard {
 
   private setupInputInterceptor() {
     this.terminal.setInputInterceptor((data: string) => {
+      console.log('[Interceptor] input:', JSON.stringify(data), 'ctrl:', this.ctrlActive, 'alt:', this.altActive);
+      
       // If no modifiers active, pass through unchanged
       if (!this.ctrlActive && !this.altActive) {
+        console.log('[Interceptor] no modifiers, passing through');
         return data;
       }
 
@@ -234,6 +237,7 @@ export class VirtualKeyboard {
         this.updateModifierButtons();
       }
 
+      console.log('[Interceptor] result:', JSON.stringify(result));
       return result;
     });
   }
@@ -327,17 +331,34 @@ export class VirtualKeyboard {
     this.inputArea.setAttribute('spellcheck', 'false');
     
     // Handle IME composition events
-    this.inputArea.addEventListener('compositionstart', () => {
+    this.inputArea.addEventListener('compositionstart', (e) => {
+      console.log('[IME] compositionstart:', e.data);
       this.isComposing = true;
     });
     
-    this.inputArea.addEventListener('compositionend', () => {
-      this.isComposing = false;
+    this.inputArea.addEventListener('compositionend', (e) => {
+      console.log('[IME] compositionend:', e.data);
+      // Use setTimeout to ensure this runs after any pending keydown event
+      // This fixes Chrome's event order issue where input fires before compositionend
+      setTimeout(() => {
+        this.isComposing = false;
+        console.log('[IME] isComposing set to false (after timeout)');
+      }, 0);
     });
     
     // Handle Enter key
     this.inputArea.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !this.isComposing) {
+      // keyCode 229 means IME is processing the key
+      const isIMEProcessing = e.keyCode === 229;
+      console.log('[Keyboard] keydown:', e.key, 'keyCode:', e.keyCode, 'e.isComposing:', e.isComposing, 'this.isComposing:', this.isComposing, 'isIMEProcessing:', isIMEProcessing);
+      
+      // Skip if IME is composing - use multiple checks for compatibility
+      if (e.isComposing || this.isComposing || isIMEProcessing) {
+        console.log('[Keyboard] skipping - IME active');
+        return;
+      }
+      
+      if (e.key === 'Enter') {
         if (!this.isMultilineMode) {
           e.preventDefault();
           this.sendInputCommand();
@@ -347,7 +368,9 @@ export class VirtualKeyboard {
     });
     
     // Auto-resize textarea
-    this.inputArea.addEventListener('input', () => {
+    this.inputArea.addEventListener('input', (e) => {
+      const target = e.target as HTMLTextAreaElement;
+      console.log('[Keyboard] input event, value:', target.value, 'isComposing:', this.isComposing);
       if (this.isMultilineMode && this.inputArea) {
         this.inputArea.style.height = 'auto';
         this.inputArea.style.height = Math.min(this.inputArea.scrollHeight, 100) + 'px';
@@ -515,14 +538,18 @@ export class VirtualKeyboard {
   private sendInputCommand() {
     if (!this.inputArea) return;
     const command = this.inputArea.value;
+    console.log('[Keyboard] sendInputCommand called, value:', JSON.stringify(command), 'isComposing:', this.isComposing);
     if (command.trim()) {
       // Send command with newline
+      console.log('[Keyboard] sending via sendKey:', JSON.stringify(command + '\n'));
       this.terminal.sendKey(command + '\n');
       this.inputArea.value = '';
       // Reset height in multiline mode
       if (this.isMultilineMode) {
         this.inputArea.style.height = '';
       }
+    } else {
+      console.log('[Keyboard] command is empty or whitespace, not sending');
     }
   }
 }
