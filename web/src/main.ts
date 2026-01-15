@@ -1,4 +1,4 @@
-import 'xterm/css/xterm.css';
+import '@xterm/xterm/css/xterm.css';
 import { api } from './api';
 import { TerminalManager } from './terminal';
 import { VirtualKeyboard } from './keyboard';

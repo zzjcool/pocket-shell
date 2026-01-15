@@ -159,9 +159,11 @@
       bottom: 10px;
       left: 10px;
       right: 10px;
-      background: #16213e;
+      background: rgba(22, 33, 62, 0.85);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       padding: 10px 12px 12px 12px;
-      border: 1px solid #2d3748;
+      border: 1px solid rgba(45, 55, 72, 0.8);
       border-radius: 12px;
       z-index: 100;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -289,7 +291,9 @@
       position: absolute;
       width: 48px;
       height: 48px;
-      background: #16213e;
+      background: rgba(22, 33, 62, 0.9);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       border: 1px solid #4ecdc4;
       border-radius: 12px;
       z-index: 100;
@@ -299,7 +303,7 @@
       justify-content: center;
       cursor: pointer;
       touch-action: none;
-      transition: all 0.15s ease;
+      will-change: transform;
     }
 
     /* Zoom in/expand icon using SVG */
@@ -327,7 +331,6 @@
     }
 
     .keyboard-minimized.dragging {
-      opacity: 0.9;
       cursor: grabbing;
     }
 

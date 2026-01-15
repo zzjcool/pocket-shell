@@ -59,6 +59,26 @@ export class VirtualKeyboard {
     this.setupDrag();
     this.setupInputInterceptor();
     this.setupGlobalDragListeners();
+    this.setupResizeListener();
+  }
+  
+  private setupResizeListener() {
+    // Handle window resize to keep keyboard/minimized button in bounds
+    window.addEventListener('resize', () => {
+      if (this.isMinimized && this.minimizedButton) {
+        // Clamp minimized button position
+        const currentBottom = parseInt(this.minimizedButton.style.bottom) || 10;
+        const currentRight = parseInt(this.minimizedButton.style.right) || 10;
+        const maxBottom = window.innerHeight - 60;
+        const maxRight = window.innerWidth - 60;
+        
+        this.minimizedButton.style.bottom = `${Math.max(10, Math.min(maxBottom, currentBottom))}px`;
+        this.minimizedButton.style.right = `${Math.max(10, Math.min(maxRight, currentRight))}px`;
+      } else if (!this.isMinimized) {
+        // Clamp keyboard position
+        this.clampPosition();
+      }
+    });
   }
 
   private setupGlobalDragListeners() {
@@ -155,14 +175,36 @@ export class VirtualKeyboard {
     // Remove minimized button
     if (this.minimizedButton) {
       // Transfer position from minimized button to keyboard
-      const bottom = parseInt(this.minimizedButton.style.bottom) || 10;
-      this.container.style.bottom = `${bottom}px`;
+      // But clamp it to ensure the keyboard stays within screen bounds
+      const buttonBottom = parseInt(this.minimizedButton.style.bottom) || 10;
       
       this.minimizedButton.remove();
       this.minimizedButton = null;
+      
+      // Show the container first so we can measure its height
+      this.container.style.display = '';
+      
+      // Clamp the bottom position to ensure keyboard stays on screen
+      const maxBottom = window.innerHeight - this.container.offsetHeight - 10;
+      const newBottom = Math.max(0, Math.min(maxBottom, buttonBottom));
+      this.container.style.bottom = `${newBottom}px`;
+    } else {
+      this.container.style.display = '';
     }
     
-    this.container.style.display = '';
+    // Ensure position is valid after restore
+    this.clampPosition();
+  }
+  
+  private clampPosition() {
+    // Ensure the keyboard stays within screen bounds
+    const currentBottom = parseInt(getComputedStyle(this.container).bottom) || 0;
+    const maxBottom = window.innerHeight - this.container.offsetHeight - 10;
+    
+    if (currentBottom > maxBottom || currentBottom < 0) {
+      const clampedBottom = Math.max(0, Math.min(maxBottom, currentBottom));
+      this.container.style.bottom = `${clampedBottom}px`;
+    }
   }
 
   private setupMinimizedDrag() {
@@ -537,7 +579,8 @@ export class VirtualKeyboard {
 
   private sendInputCommand() {
     if (!this.inputArea) return;
-    const command = this.inputArea.value;
+    // Fix: Replace non-breaking space (U+00A0) with regular space
+    const command = this.inputArea.value.replace(/\u00A0/g, ' ');
     console.log('[Keyboard] sendInputCommand called, value:', JSON.stringify(command), 'isComposing:', this.isComposing);
     if (command.trim()) {
       // Send command with newline

@@ -1,6 +1,7 @@
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import { WebLinksAddon } from 'xterm-addon-web-links';
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import { WebLinksAddon } from '@xterm/addon-web-links';
+import { WebglAddon } from '@xterm/addon-webgl';
 import { api } from './api';
 import type { WSMessage } from './types';
 
@@ -80,6 +81,20 @@ export class TerminalManager {
     this.terminal.loadAddon(new WebLinksAddon());
 
     this.terminal.open(container);
+    
+    // Load WebGL addon for GPU acceleration (must be after terminal.open)
+    try {
+      const webglAddon = new WebglAddon();
+      webglAddon.onContextLoss(() => {
+        // If WebGL context is lost, dispose and fall back to canvas
+        webglAddon.dispose();
+      });
+      this.terminal.loadAddon(webglAddon);
+      console.log('[Terminal] WebGL renderer enabled');
+    } catch (e) {
+      console.warn('[Terminal] WebGL not available, using canvas renderer:', e);
+    }
+    
     this.fit();
 
     // Workaround for iOS Safari predictive text and mobile IME issues
@@ -112,7 +127,10 @@ export class TerminalManager {
         // Only send what hasn't been sent yet
         const currentValue = xtermTextarea.value;
         if (currentValue.length > lastSentLength) {
-          const pendingValue = currentValue.substring(lastSentLength);
+          let pendingValue = currentValue.substring(lastSentLength);
+          // Fix: Replace non-breaking space (U+00A0) with regular space
+          // Some mobile keyboards insert NBSP instead of regular spaces
+          pendingValue = pendingValue.replace(/\u00A0/g, ' ');
           console.log('[XtermTextarea] FLUSH pending input:', JSON.stringify(pendingValue));
           this.send({ type: 'input', data: pendingValue });
           lastSentLength = currentValue.length;
@@ -189,7 +207,10 @@ export class TerminalManager {
       clearFlushTimeout();
       onXtermData();
       
-      const processed = this.inputInterceptor ? this.inputInterceptor(data) : data;
+      // Fix: Replace non-breaking space (U+00A0) with regular space
+      let fixedData = data.replace(/\u00A0/g, ' ');
+      
+      const processed = this.inputInterceptor ? this.inputInterceptor(fixedData) : fixedData;
       console.log('[Terminal] processed:', JSON.stringify(processed));
       if (processed) {
         this.send({ type: 'input', data: processed });
