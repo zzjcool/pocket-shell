@@ -186,6 +186,11 @@ export class VirtualKeyboard {
 
   private minimize() {
     this.isMinimized = true;
+    
+    // Save current keyboard position before hiding
+    const computedStyle = getComputedStyle(this.container);
+    const currentTop = parseInt(computedStyle.top) || 10;
+    
     this.container.style.display = 'none';
     
     // Create minimized button
@@ -193,8 +198,8 @@ export class VirtualKeyboard {
     this.minimizedButton.className = 'keyboard-minimized';
     this.minimizedButton.title = '展开工具栏';
     
-    // Position at top right by default
-    this.minimizedButton.style.top = '10px';
+    // Position at current keyboard position (top right corner of keyboard)
+    this.minimizedButton.style.top = `${currentTop}px`;
     this.minimizedButton.style.right = '10px';
     
     // Add to parent
@@ -207,14 +212,22 @@ export class VirtualKeyboard {
   private restore() {
     this.isMinimized = false;
     
-    // Remove minimized button
+    // Get the position of minimized button before removing it
+    let savedTop: number | null = null;
     if (this.minimizedButton) {
+      savedTop = parseInt(this.minimizedButton.style.top) || null;
       this.minimizedButton.remove();
       this.minimizedButton = null;
     }
     
-    // Show the container (keyboard is positioned at top via CSS)
+    // Show the container and set its position to match the minimized button
     this.container.style.display = '';
+    if (savedTop !== null) {
+      // Clamp the position to ensure keyboard fits on screen
+      const maxTop = window.innerHeight - this.container.offsetHeight - 10;
+      const clampedTop = Math.max(10, Math.min(maxTop, savedTop));
+      this.container.style.top = `${clampedTop}px`;
+    }
   }
 
   private setupMinimizedDrag() {
