@@ -73,6 +73,20 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	session.Touch()
 
+	// Send buffered output history on reconnection
+	if history := session.OutputBuffer.Bytes(); len(history) > 0 {
+		dataBytes, _ := json.Marshal(string(history))
+		msg := wsMessage{
+			Type: "output",
+			Data: json.RawMessage(dataBytes),
+		}
+		msgBytes, _ := json.Marshal(msg)
+		if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
+			log.Printf("Failed to send output history: %v", err)
+			return
+		}
+	}
+
 	// Read from PTY and send to WebSocket
 	go func() {
 		bufPtr := bufferPool.Get().(*[]byte)
@@ -141,20 +155,23 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			// Reset restart counter on successful read
 			restartCount = 0
 
-			if n > 0 {
-				// Properly encode the output as JSON string
-				outputStr := string(buf[:n])
-				dataBytes, _ := json.Marshal(outputStr)
-				msg := wsMessage{
-					Type: "output",
-					Data: json.RawMessage(dataBytes),
-				}
-				msgBytes, _ := json.Marshal(msg)
-				if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-					cancel()
-					return
-				}
+		if n > 0 {
+			// Store output in session buffer for reconnection
+			session.OutputBuffer.Write(buf[:n])
+			
+			// Properly encode the output as JSON string
+			outputStr := string(buf[:n])
+			dataBytes, _ := json.Marshal(outputStr)
+			msg := wsMessage{
+				Type: "output",
+				Data: json.RawMessage(dataBytes),
 			}
+			msgBytes, _ := json.Marshal(msg)
+			if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
+				cancel()
+				return
+			}
+		}
 		}
 	}()
 

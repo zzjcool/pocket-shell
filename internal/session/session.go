@@ -9,14 +9,74 @@ import (
 	"github.com/pocketshell/pocket-shell/internal/terminal"
 )
 
+// Default output buffer size (64KB should capture recent terminal output)
+const DefaultOutputBufferSize = 64 * 1024
+
+// RingBuffer is a simple ring buffer for storing output history
+type RingBuffer struct {
+	data  []byte
+	size  int
+	start int
+	len   int
+	mu    sync.Mutex
+}
+
+// NewRingBuffer creates a new ring buffer with the given size
+func NewRingBuffer(size int) *RingBuffer {
+	return &RingBuffer{
+		data: make([]byte, size),
+		size: size,
+	}
+}
+
+// Write appends data to the ring buffer
+func (r *RingBuffer) Write(p []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, b := range p {
+		pos := (r.start + r.len) % r.size
+		r.data[pos] = b
+		if r.len < r.size {
+			r.len++
+		} else {
+			r.start = (r.start + 1) % r.size
+		}
+	}
+}
+
+// Bytes returns all data in the buffer in order
+func (r *RingBuffer) Bytes() []byte {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.len == 0 {
+		return nil
+	}
+
+	result := make([]byte, r.len)
+	for i := 0; i < r.len; i++ {
+		result[i] = r.data[(r.start+i)%r.size]
+	}
+	return result
+}
+
+// Len returns the current length of data in the buffer
+func (r *RingBuffer) Len() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.len
+}
+
 // Session represents a terminal session
 type Session struct {
-	ID        string
-	UserID    string
-	PTY       *terminal.PTY
-	CreatedAt time.Time
-	lastUsed  atomic.Int64 // Unix nano timestamp for lock-free access
-	mu        sync.Mutex
+	ID           string
+	UserID       string
+	PTY          *terminal.PTY
+	CreatedAt    time.Time
+	lastUsed     atomic.Int64 // Unix nano timestamp for lock-free access
+	mu           sync.Mutex
+	OutputBuffer *RingBuffer // Stores recent output for reconnection
 }
 
 // NewSession creates a new session
@@ -27,11 +87,12 @@ func NewSession(userID string) (*Session, error) {
 	}
 
 	return &Session{
-		ID:        uuid.New().String(),
-		UserID:    userID,
-		PTY:       pty,
-		CreatedAt: time.Now(),
-		lastUsed:  func() atomic.Int64 { var v atomic.Int64; v.Store(time.Now().UnixNano()); return v }(),
+		ID:           uuid.New().String(),
+		UserID:       userID,
+		PTY:          pty,
+		CreatedAt:    time.Now(),
+		lastUsed:     func() atomic.Int64 { var v atomic.Int64; v.Store(time.Now().UnixNano()); return v }(),
+		OutputBuffer: NewRingBuffer(DefaultOutputBufferSize),
 	}, nil
 }
 
@@ -62,6 +123,8 @@ func (s *Session) RestartPTY() error {
 	}
 
 	s.PTY = pty
+	// Reset output buffer for new shell
+	s.OutputBuffer = NewRingBuffer(DefaultOutputBufferSize)
 	return nil
 }
 
