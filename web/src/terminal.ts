@@ -80,6 +80,9 @@ export class TerminalManager {
   private debouncedFit: (() => void) | null = null;
   private disposed = false;
   
+  // Viewport resize handler for mobile keyboard
+  private viewportResizeHandler: (() => void) | null = null;
+  
   // Keyboard lock - prevents soft keyboard from appearing
   private keyboardLocked = false;
   
@@ -242,6 +245,9 @@ export class TerminalManager {
     
     // Also listen to window resize as fallback
     window.addEventListener('resize', this.debouncedFit);
+
+    // Setup visualViewport listener for mobile keyboard handling
+    this.setupViewportResize();
 
     // Setup pinch-to-zoom for font size adjustment on mobile
     this.setupPinchZoom();
@@ -520,6 +526,132 @@ export class TerminalManager {
     return this.fontSize;
   }
 
+  // Setup visualViewport listener to handle mobile keyboard appearance
+  // When keyboard appears, we translate the terminal container upward
+  // incrementally as content grows - only moving when cursor would be hidden
+  private setupViewportResize() {
+    if (!window.visualViewport) {
+      debugLog('[Terminal] visualViewport API not available');
+      return;
+    }
+
+    // Find the terminal container to transform
+    const terminalContainer = this.container.closest('.terminal-container') as HTMLElement;
+    if (!terminalContainer) {
+      debugLog('[Terminal] terminal-container not found');
+      return;
+    }
+
+    let currentTranslateY = 0;
+    let keyboardHeight = 0;
+    let initialHeight = window.visualViewport.height;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let updateTimer: ReturnType<typeof setTimeout> | null = null;
+    
+    // Function to calculate and apply translation based on cursor position
+    const updateTranslation = () => {
+      if (this.disposed || keyboardHeight <= 50) {
+        return;
+      }
+      
+      const viewportHeight = window.visualViewport!.height;
+      const viewportOffsetTop = window.visualViewport!.offsetTop;
+      const lineHeight = this.fontSize * 1.2;
+      
+      // Get safe area inset bottom for iOS Safari floating address bar
+      const safeAreaBottom = parseInt(
+        getComputedStyle(document.documentElement).getPropertyValue('--sab') || '0'
+      ) || 0;
+      
+      // Extra padding for iOS Safari's floating bottom bar (approximately 30-50px)
+      const iosSafariBottomBar = 50;
+      
+      // Get cursor row from terminal buffer
+      const cursorY = this.terminal.buffer.active.cursorY;
+      
+      // Use fixed original position (0) since terminal starts at top
+      // Don't use getBoundingClientRect as it's affected by ongoing CSS transitions
+      const originalTop = 0;
+      
+      // Calculate cursor bottom position in screen coordinates
+      const cursorBottom = originalTop + (cursorY + 1) * lineHeight;
+      
+      // How much cursor overlaps with keyboard (keyboard starts at viewportHeight)
+      // Subtract safe area and iOS bottom bar to account for Safari UI
+      const visibleBottom = viewportHeight + viewportOffsetTop - safeAreaBottom - iosSafariBottomBar;
+      const overlap = cursorBottom - visibleBottom;
+      
+      debugLog('[Terminal] updateTranslation:', { 
+        cursorY, cursorBottom, visibleBottom, safeAreaBottom, iosSafariBottomBar, overlap, currentTranslateY 
+      });
+      
+      if (overlap > 0) {
+        // Need to translate up - cursor is behind keyboard
+        // Round to nearest pixel to avoid sub-pixel jitter
+        const newTranslateY = Math.round(Math.min(overlap + 10, keyboardHeight + iosSafariBottomBar));
+        if (newTranslateY > currentTranslateY) {
+          currentTranslateY = newTranslateY;
+          terminalContainer.style.transform = `translateY(-${currentTranslateY}px)`;
+          debugLog('[Terminal] applied translateY:', currentTranslateY);
+        }
+      }
+    };
+    
+    // Debounced version for terminal output
+    const debouncedUpdate = () => {
+      if (updateTimer) {
+        clearTimeout(updateTimer);
+      }
+      updateTimer = setTimeout(updateTranslation, 50);
+    };
+    
+    // Listen to terminal data to detect new content
+    this.terminal.onWriteParsed(() => {
+      if (keyboardHeight > 50) {
+        debouncedUpdate();
+      }
+    });
+    
+    this.viewportResizeHandler = () => {
+      if (!window.visualViewport || this.disposed) return;
+      
+      // Debounce to wait for iOS keyboard animation to settle
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      
+      debounceTimer = setTimeout(() => {
+        if (!window.visualViewport || this.disposed) return;
+        
+        const viewportHeight = window.visualViewport.height;
+        
+        // Update initial height when keyboard is closed (full viewport)
+        if (viewportHeight > initialHeight) {
+          initialHeight = viewportHeight;
+        }
+        
+        const newKeyboardHeight = initialHeight - viewportHeight;
+        
+        debugLog('[Terminal] visualViewport stable:', { initialHeight, viewportHeight, newKeyboardHeight });
+        
+        if (newKeyboardHeight > 50) {
+          // Keyboard opened or resized
+          keyboardHeight = newKeyboardHeight;
+          updateTranslation();
+        } else {
+          // Keyboard closed - reset translation with animation
+          keyboardHeight = 0;
+          currentTranslateY = 0;
+          terminalContainer.style.transform = '';
+        }
+      }, 200);
+    };
+
+    // Listen to viewport changes
+    window.visualViewport.addEventListener('resize', this.viewportResizeHandler);
+    window.visualViewport.addEventListener('scroll', this.viewportResizeHandler);
+  }
+
   // Setup pinch-to-zoom gesture for font size adjustment
   // And single-finger swipe for scrolling terminal history
   private setupPinchZoom() {
@@ -711,6 +843,13 @@ export class TerminalManager {
     if (this.debouncedFit) {
       window.removeEventListener('resize', this.debouncedFit);
       this.debouncedFit = null;
+    }
+    
+    // Remove visualViewport listeners
+    if (this.viewportResizeHandler && window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', this.viewportResizeHandler);
+      window.visualViewport.removeEventListener('scroll', this.viewportResizeHandler);
+      this.viewportResizeHandler = null;
     }
     
     // Dispose WebGL addon
