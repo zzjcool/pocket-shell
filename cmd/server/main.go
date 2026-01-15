@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -13,12 +14,23 @@ import (
 	"github.com/pocketshell/pocket-shell/web"
 )
 
+var (
+	// Version is set by ldflags during build
+	Version = "dev"
+)
+
 func main() {
 	addr := flag.String("addr", ":8080", "Server address")
 	username := flag.String("user", "admin", "Login username")
 	password := flag.String("pass", "admin", "Login password")
 	jwtSecret := flag.String("secret", "pocket-shell-secret-key", "JWT secret key")
+	version := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
+
+	if *version {
+		fmt.Printf("pocket-shell %s\n", Version)
+		os.Exit(0)
+	}
 
 	// Setup auth provider
 	authProvider := auth.NewPasswordProvider()

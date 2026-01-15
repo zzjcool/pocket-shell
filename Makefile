@@ -1,5 +1,9 @@
 .PHONY: all build clean dev web server install-deps
 
+# Version from git tag or default to dev
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS := -ldflags "-X main.Version=$(VERSION)"
+
 # Default target
 all: build
 
@@ -15,7 +19,7 @@ web:
 
 # Build backend (requires frontend to be built first)
 server: web
-	go build -o bin/pocket-shell ./cmd/server
+	go build $(LDFLAGS) -o bin/pocket-shell ./cmd/server
 
 # Build everything
 build: install-deps server

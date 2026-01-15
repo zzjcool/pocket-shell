@@ -2,12 +2,24 @@
 set -e
 
 # Pocket Shell Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
-#    or: wget -qO- https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
+# Usage: 
+#   Install:  curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
+#   Update:   curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh -s -- --update
+#   Check:    curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh -s -- --check
 
 REPO="zzjcool/pocket-shell"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 BINARY_NAME="pocket-shell"
+
+# Parse command line arguments
+UPDATE_MODE=false
+CHECK_MODE=false
+for arg in "$@"; do
+    case "$arg" in
+        --update) UPDATE_MODE=true ;;
+        --check) CHECK_MODE=true ;;
+    esac
+done
 
 # Detect OS
 detect_os() {
@@ -51,7 +63,81 @@ download() {
     fi
 }
 
+# Get installed version
+get_installed_version() {
+    if [ -f "${INSTALL_DIR}/${BINARY_NAME}" ]; then
+        "${INSTALL_DIR}/${BINARY_NAME}" --version 2>/dev/null | awk '{print $2}' || echo ""
+    else
+        echo ""
+    fi
+}
+
+# Compare versions (returns 0 if v1 < v2, 1 if v1 >= v2)
+version_lt() {
+    v1=$(echo "$1" | sed 's/^v//')
+    v2=$(echo "$2" | sed 's/^v//')
+    
+    # Simple version comparison
+    if [ "$v1" = "$v2" ]; then
+        return 1
+    fi
+    
+    # Use printf and sort to compare
+    older=$(printf '%s\n%s' "$v1" "$v2" | sort -V | head -n1)
+    if [ "$older" = "$v1" ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 main() {
+    # Get latest version from GitHub
+    VERSION=$(get_latest_version)
+    if [ -z "$VERSION" ]; then
+        echo "Error: Failed to get latest version" >&2
+        exit 1
+    fi
+
+    # Get installed version
+    INSTALLED_VERSION=$(get_installed_version)
+
+    # Check mode - just display version info
+    if [ "$CHECK_MODE" = true ]; then
+        if [ -z "$INSTALLED_VERSION" ]; then
+            echo "Pocket Shell is not installed"
+            echo "Latest version: ${VERSION}"
+            echo ""
+            echo "Install with:"
+            echo "  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh"
+        else
+            echo "Installed version: ${INSTALLED_VERSION}"
+            echo "Latest version:    ${VERSION}"
+            echo ""
+            if version_lt "$INSTALLED_VERSION" "$VERSION"; then
+                echo "✓ Update available!"
+                echo ""
+                echo "Update with:"
+                echo "  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh -s -- --update"
+            else
+                echo "✓ You are up to date!"
+            fi
+        fi
+        exit 0
+    fi
+
+    # Update mode - check if update is needed
+    if [ "$UPDATE_MODE" = true ]; then
+        if [ -z "$INSTALLED_VERSION" ]; then
+            echo "Pocket Shell is not installed. Installing..."
+        elif version_lt "$INSTALLED_VERSION" "$VERSION"; then
+            echo "Updating Pocket Shell from ${INSTALLED_VERSION} to ${VERSION}..."
+        else
+            echo "Already at latest version ${VERSION}"
+            exit 0
+        fi
+    fi
+
     OS=$(detect_os)
     ARCH=$(detect_arch)
 
@@ -67,11 +153,6 @@ main() {
 
     echo "Detecting system: ${OS}-${ARCH}"
 
-    VERSION=$(get_latest_version)
-    if [ -z "$VERSION" ]; then
-        echo "Error: Failed to get latest version" >&2
-        exit 1
-    fi
     echo "Latest version: ${VERSION}"
 
     # Build download URL
@@ -107,10 +188,14 @@ main() {
 
     rm -rf "$TMP_DIR"
 
+    INSTALLED_VERSION=$(get_installed_version)
     echo ""
-    echo "✓ Pocket Shell ${VERSION} installed successfully!"
+    echo "✓ Pocket Shell ${INSTALLED_VERSION} installed successfully!"
     echo ""
     echo "Run 'pocket-shell -h' to get started."
+    echo ""
+    echo "Check for updates with:"
+    echo "  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh -s -- --check"
 }
 
-main
+main "$@"

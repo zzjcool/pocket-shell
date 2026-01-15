@@ -17,6 +17,8 @@ A mobile-optimized web terminal that lets you use the command line smoothly on y
 
 ## Quick Start
 
+### Installation
+
 Using curl:
 
 ```bash
@@ -29,10 +31,30 @@ Using wget:
 wget -qO- https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
 ```
 
+### Check for Updates
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh -s -- --check
+```
+
+### Update to Latest Version
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh -s -- --update
+```
+
+### Running
+
 After installation, run:
 
 ```bash
 pocket-shell
+```
+
+Check version:
+
+```bash
+pocket-shell --version
 ```
 
 ## Tech Stack

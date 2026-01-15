@@ -17,6 +17,8 @@
 
 ## 快速启动
 
+### 安装
+
 使用 curl:
 
 ```bash
@@ -29,10 +31,30 @@ curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.s
 wget -qO- https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh
 ```
 
+### 检查更新
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh -s -- --check
+```
+
+### 更新到最新版本
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh -s -- --update
+```
+
+### 运行
+
 安装完成后运行:
 
 ```bash
 pocket-shell
+```
+
+查看版本:
+
+```bash
+pocket-shell --version
 ```
 
 ## 技术栈
