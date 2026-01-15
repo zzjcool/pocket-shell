@@ -27,12 +27,24 @@ export class TerminalManager {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private isReconnecting = false;
+  private fontSize = 12;
+  private readonly minFontSize = 8;
+  private readonly maxFontSize = 32;
+  private readonly fontSizeKey = 'pocket-shell-font-size';
 
   constructor(container: HTMLElement) {
+    // Load saved font size from localStorage
+    const savedFontSize = localStorage.getItem(this.fontSizeKey);
+    if (savedFontSize) {
+      const parsed = parseInt(savedFontSize, 10);
+      if (!isNaN(parsed) && parsed >= this.minFontSize && parsed <= this.maxFontSize) {
+        this.fontSize = parsed;
+      }
+    }
     this.container = container;
     this.terminal = new Terminal({
       cursorBlink: true,
-      fontSize: 14,
+      fontSize: this.fontSize,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       scrollback: 1000,
       overviewRulerWidth: 0,
@@ -74,8 +86,9 @@ export class TerminalManager {
     // xterm.js doesn't always fire onData correctly on mobile browsers
     const xtermTextarea = container.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement;
     let isComposing = false;
-    let lastSentData = '';
     let flushTimeout: ReturnType<typeof setTimeout> | null = null;
+    // Track what we've already sent to avoid duplicates
+    let lastSentLength = 0;
     
     const clearFlushTimeout = () => {
       if (flushTimeout) {
@@ -84,14 +97,29 @@ export class TerminalManager {
       }
     };
     
+    // Clear textarea and reset tracking
+    const clearTextarea = () => {
+      if (xtermTextarea) {
+        xtermTextarea.value = '';
+        lastSentLength = 0;
+      }
+    };
+    
     // Flush any pending input in textarea that xterm missed
     const flushPendingInput = () => {
       clearFlushTimeout();
       if (xtermTextarea && xtermTextarea.value) {
-        const pendingValue = xtermTextarea.value;
-        console.log('[XtermTextarea] FLUSH pending input:', JSON.stringify(pendingValue));
-        this.send({ type: 'input', data: pendingValue });
+        // Only send what hasn't been sent yet
+        const currentValue = xtermTextarea.value;
+        if (currentValue.length > lastSentLength) {
+          const pendingValue = currentValue.substring(lastSentLength);
+          console.log('[XtermTextarea] FLUSH pending input:', JSON.stringify(pendingValue));
+          this.send({ type: 'input', data: pendingValue });
+          lastSentLength = currentValue.length;
+        }
+        // Clear textarea after flush
         xtermTextarea.value = '';
+        lastSentLength = 0;
       }
     };
     
@@ -136,6 +164,9 @@ export class TerminalManager {
     } else {
       console.log('[Terminal] xterm textarea not found');
     }
+    
+    // Helper to clear textarea when xterm handles input
+    const onXtermData = clearTextarea;
 
     // Handle resize with debounce using ResizeObserver
     const debouncedFit = debounce(() => this.fit(), 100);
@@ -147,13 +178,16 @@ export class TerminalManager {
     // Also listen to window resize as fallback
     window.addEventListener('resize', debouncedFit);
 
+    // Setup pinch-to-zoom for font size adjustment on mobile
+    this.setupPinchZoom();
+
     // Handle input - allow interceptor for modifier keys
     this.terminal.onData((data) => {
       console.log('[Terminal] onData:', JSON.stringify(data), 'hasInterceptor:', !!this.inputInterceptor);
       
-      // xterm handled this, cancel pending flush
+      // xterm handled this, cancel pending flush and clear textarea
       clearFlushTimeout();
-      lastSentData = data;
+      onXtermData();
       
       const processed = this.inputInterceptor ? this.inputInterceptor(data) : data;
       console.log('[Terminal] processed:', JSON.stringify(processed));
@@ -361,6 +395,63 @@ export class TerminalManager {
 
   focus() {
     this.terminal.focus();
+  }
+
+  // Set font size and refit terminal
+  setFontSize(size: number) {
+    const newSize = Math.max(this.minFontSize, Math.min(this.maxFontSize, Math.round(size)));
+    if (newSize === this.fontSize) return;
+    
+    this.fontSize = newSize;
+    this.terminal.options.fontSize = newSize;
+    localStorage.setItem(this.fontSizeKey, String(newSize));
+    this.fit();
+  }
+
+  getFontSize(): number {
+    return this.fontSize;
+  }
+
+  // Setup pinch-to-zoom gesture for font size adjustment
+  private setupPinchZoom() {
+    let initialDistance = 0;
+    let initialFontSize = this.fontSize;
+    let isPinching = false;
+
+    const getDistance = (touches: TouchList): number => {
+      if (touches.length < 2) return 0;
+      const dx = touches[1].clientX - touches[0].clientX;
+      const dy = touches[1].clientY - touches[0].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    this.container.addEventListener('touchstart', (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        isPinching = true;
+        initialDistance = getDistance(e.touches);
+        initialFontSize = this.fontSize;
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    this.container.addEventListener('touchmove', (e: TouchEvent) => {
+      if (!isPinching || e.touches.length !== 2) return;
+      
+      const currentDistance = getDistance(e.touches);
+      const scale = currentDistance / initialDistance;
+      const newFontSize = initialFontSize * scale;
+      
+      this.setFontSize(newFontSize);
+      e.preventDefault();
+    }, { passive: false });
+
+    this.container.addEventListener('touchend', () => {
+      isPinching = false;
+    });
+
+    this.container.addEventListener('touchcancel', () => {
+      isPinching = false;
+    });
   }
 
   getTerminal(): Terminal {
