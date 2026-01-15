@@ -48,6 +48,8 @@ export class TerminalManager {
       fontSize: this.fontSize,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       scrollback: 1000,
+      // Disable scrollbar to prevent black border and scrollbar visibility
+      scrollOnUserInput: true,
       overviewRulerWidth: 0,
       // Improve IME support for third-party input methods
       allowProposedApi: true,
@@ -57,6 +59,10 @@ export class TerminalManager {
         cursor: '#eaeaea',
         cursorAccent: '#1a1a2e',
         selectionBackground: '#3a3a5e',
+        // Hide scrollbar by making it transparent
+        scrollbarSliderBackground: 'transparent',
+        scrollbarSliderHoverBackground: 'transparent',
+        scrollbarSliderActiveBackground: 'transparent',
         black: '#1a1a2e',
         red: '#ff6b6b',
         green: '#4ecdc4',

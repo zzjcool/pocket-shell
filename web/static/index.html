@@ -127,29 +127,38 @@
 
     #terminal-area .xterm {
       height: 100%;
-      padding: 8px;
+      padding: 0;
     }
 
-    /* Hide xterm scrollbar */
+    /* Ensure xterm canvas fills container properly (xterm v6 fix) */
+    #terminal-area .xterm .xterm-screen canvas {
+      display: block;
+    }
+
+    /* Hide xterm scrollbar (xterm v6 compatible) */
     .xterm-viewport::-webkit-scrollbar {
-      display: none;
+      display: none !important;
+      width: 0 !important;
     }
 
     .xterm-viewport {
-      scrollbar-width: none;
-      -ms-overflow-style: none;
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
+      overflow-y: hidden !important;
     }
 
-    /* Remove scrollbar reserved space */
+    /* Force xterm to use full width without scrollbar space */
     .xterm .xterm-viewport {
-      overflow-y: auto !important;
+      width: 100% !important;
+      overflow-y: hidden !important;
     }
 
     .xterm .xterm-screen {
       width: 100% !important;
     }
-    
-    .xterm .xterm-rows {
+
+    /* Ensure proper sizing for WebGL canvas */
+    .xterm .xterm-screen canvas {
       width: 100% !important;
     }
 
