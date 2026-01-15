@@ -182,7 +182,12 @@ export class TerminalManager {
           // Some mobile keyboards insert NBSP instead of regular spaces
           pendingValue = pendingValue.replace(/\u00A0/g, ' ');
           debugLog('[XtermTextarea] FLUSH pending input:', JSON.stringify(pendingValue));
-          this.send({ type: 'input', data: pendingValue });
+          // Apply inputInterceptor if set (for modifier keys like Ctrl, Alt)
+          const processed = this.inputInterceptor ? this.inputInterceptor(pendingValue) : pendingValue;
+          debugLog('[XtermTextarea] FLUSH processed:', JSON.stringify(processed));
+          if (processed) {
+            this.send({ type: 'input', data: processed });
+          }
           lastSentLength = currentValue.length;
         }
         // Clear textarea after flush

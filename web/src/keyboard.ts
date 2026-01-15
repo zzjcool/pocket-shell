@@ -33,12 +33,9 @@ const arrowKeys: KeyConfig[] = [
   { label: '\u2192', key: '\x1b[C' },
 ];
 
-const quickCommands: KeyConfig[] = [
-  { label: 'ls', key: 'ls -G\n' },
-  { label: 'cd', key: 'cd ' },
-  { label: 'pwd', key: 'pwd\n' },
-  { label: 'clear', key: 'clear\n' },
-  { label: 'exit', key: 'exit\n' },
+const ctrlShortcuts: KeyConfig[] = [
+  { label: '^C', key: '\x03' },  // Ctrl+C
+  { label: '^L', key: '\x0c' },  // Ctrl+L (clear screen)
 ];
 
 export class VirtualKeyboard {
@@ -496,7 +493,7 @@ export class VirtualKeyboard {
     const shortcutsScroll = document.createElement('div');
     shortcutsScroll.className = 'shortcuts-scroll';
     
-    // Logout button (icon)
+    // Logout button (icon) - leftmost
     const logoutBtn = document.createElement('button');
     logoutBtn.className = 'keyboard-btn shortcut-btn logout-btn';
     logoutBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
@@ -529,6 +526,15 @@ export class VirtualKeyboard {
     });
     shortcutsScroll.appendChild(logoutBtn);
     
+    // Ctrl shortcuts (^C, ^L)
+    ctrlShortcuts.forEach((shortcut) => {
+      const btn = this.createButton(shortcut.label, () => {
+        this.terminal.sendKey(shortcut.key);
+      });
+      btn.classList.add('shortcut-btn');
+      shortcutsScroll.appendChild(btn);
+    });
+    
     // Special keys
     specialKeys.forEach((key) => {
       const btn = this.createButton(key.label, () => {
@@ -557,14 +563,6 @@ export class VirtualKeyboard {
       shortcutsScroll.appendChild(btn);
     });
     
-    // Quick commands
-    quickCommands.forEach((cmd) => {
-      const btn = this.createButton(cmd.label, () => {
-        this.terminal.sendKey(cmd.key);
-      });
-      btn.classList.add('shortcut-btn', 'quick-btn');
-      shortcutsScroll.appendChild(btn);
-    });
     
     shortcutsRow.appendChild(shortcutsScroll);
     this.container.appendChild(shortcutsRow);
@@ -671,7 +669,9 @@ export class VirtualKeyboard {
         this.inputArea.style.height = '';
       }
     } else {
-      debugLog('[Keyboard] command is empty or whitespace, not sending');
+      // Send just a newline (Enter) if input is empty
+      debugLog('[Keyboard] input empty, sending Enter');
+      this.terminal.sendKey('\n');
     }
   }
 
