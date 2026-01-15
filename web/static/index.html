@@ -60,6 +60,64 @@
       pointer-events: none;
     }
 
+    /* Selection mode - show selection handles and change cursor */
+    #terminal-area.selection-mode {
+      cursor: text;
+    }
+
+    #terminal-area.selection-mode .xterm-viewport {
+      cursor: text !important;
+    }
+
+    /* Highlight selection mode border */
+    #terminal-area.selection-mode::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      border: 2px solid #4ecdc4;
+      border-radius: 4px;
+      pointer-events: none;
+      z-index: 50;
+    }
+
+    /* Selection mode button styles */
+    .shortcut-btn.select-btn {
+      background: #2d3748;
+      border-color: #4a5568;
+      color: #a0aec0;
+    }
+
+    .shortcut-btn.select-btn:hover {
+      background: #4a5568;
+    }
+
+    .shortcut-btn.select-btn.active {
+      background: #4ecdc4 !important;
+      color: #0f172a;
+      border-color: #4ecdc4;
+    }
+
+    /* Copy button styles */
+    .shortcut-btn.copy-btn {
+      background: #0f3460;
+      border-color: #1e4976;
+      color: #60a5fa;
+    }
+
+    .shortcut-btn.copy-btn:hover {
+      background: #1a4570;
+    }
+
+    /* Copy success animation */
+    .shortcut-btn.copy-btn.copied {
+      background: #059669 !important;
+      border-color: #059669;
+      color: #ffffff;
+    }
+
     /* Login View */
     .login-container {
       display: flex;

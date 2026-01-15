@@ -86,6 +86,13 @@ export class TerminalManager {
   // Keyboard lock - prevents soft keyboard from appearing
   private keyboardLocked = false;
   
+  // Selection mode - allows finger selection on mobile
+  private selectionMode = false;
+  
+  // Touch selection state
+  private touchSelectionStart: { col: number; row: number } | null = null;
+  private touchSelectionActive = false;
+  
   // Message batching for performance
   private outputBuffer = '';
   private outputFlushScheduled = false;
@@ -711,6 +718,18 @@ export class TerminalManager {
     this.container.addEventListener('touchstart', (e: TouchEvent) => {
       stopMomentum();
       
+      // In selection mode, handle touch selection
+      if (this.selectionMode && e.touches.length === 1) {
+        const pos = this.touchToTerminalPosition(e.touches[0]);
+        if (pos) {
+          this.touchSelectionStart = pos;
+          this.touchSelectionActive = true;
+          this.terminal.clearSelection();
+          e.preventDefault();
+        }
+        return;
+      }
+      
       if (e.touches.length === 2) {
         // Two finger pinch
         isPinching = true;
@@ -730,6 +749,16 @@ export class TerminalManager {
     }, { passive: false });
 
     this.container.addEventListener('touchmove', (e: TouchEvent) => {
+      // In selection mode, handle touch selection
+      if (this.selectionMode && e.touches.length === 1 && this.touchSelectionActive && this.touchSelectionStart) {
+        const pos = this.touchToTerminalPosition(e.touches[0]);
+        if (pos) {
+          this.updateTouchSelection(this.touchSelectionStart, pos);
+          e.preventDefault();
+        }
+        return;
+      }
+      
       if (isPinching && e.touches.length === 2) {
         const currentDistance = getDistance(e.touches);
         const scale = currentDistance / initialDistance;
@@ -766,6 +795,15 @@ export class TerminalManager {
     }, { passive: false });
 
     this.container.addEventListener('touchend', (e: TouchEvent) => {
+      // In selection mode, finalize selection
+      if (this.selectionMode) {
+        this.touchSelectionActive = false;
+        // Keep touchSelectionStart for potential future use
+        isPinching = false;
+        isScrolling = false;
+        return;
+      }
+      
       if (isPinching) {
         isPinching = false;
       }
@@ -781,6 +819,7 @@ export class TerminalManager {
     this.container.addEventListener('touchcancel', () => {
       isPinching = false;
       isScrolling = false;
+      this.touchSelectionActive = false;
       stopMomentum();
     });
   }
@@ -828,6 +867,142 @@ export class TerminalManager {
 
   isKeyboardLocked(): boolean {
     return this.keyboardLocked;
+  }
+
+  // Selection mode - allows finger selection on mobile
+  setSelectionMode(enabled: boolean) {
+    this.selectionMode = enabled;
+    debugLog('[Terminal] setSelectionMode:', enabled);
+    
+    if (enabled) {
+      // Enable selection mode
+      this.container.classList.add('selection-mode');
+      // Clear any existing selection
+      this.terminal.clearSelection();
+      this.touchSelectionStart = null;
+      this.touchSelectionActive = false;
+    } else {
+      // Disable selection mode
+      this.container.classList.remove('selection-mode');
+      this.touchSelectionStart = null;
+      this.touchSelectionActive = false;
+    }
+  }
+
+  isSelectionMode(): boolean {
+    return this.selectionMode;
+  }
+
+  // Convert touch position to terminal column/row
+  private touchToTerminalPosition(touch: Touch): { col: number; row: number } | null {
+    const core = (this.terminal as unknown as { _core: { _renderService: { dimensions: { css: { cell: { width: number; height: number } } } } } })._core;
+    const dims = core._renderService?.dimensions;
+    if (!dims?.css?.cell) {
+      return null;
+    }
+    
+    const cellWidth = dims.css.cell.width;
+    const cellHeight = dims.css.cell.height;
+    
+    // Get terminal element bounds
+    const xtermElement = this.container.querySelector('.xterm-screen');
+    if (!xtermElement) {
+      return null;
+    }
+    
+    const rect = xtermElement.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+    
+    // Convert to column/row (viewport-relative)
+    const col = Math.floor(x / cellWidth);
+    const row = Math.floor(y / cellHeight);
+    
+    return {
+      col: Math.max(0, Math.min(col, this.terminal.cols - 1)),
+      row: Math.max(0, Math.min(row, this.terminal.rows - 1))
+    };
+  }
+
+  // Update selection from start to end position
+  private updateTouchSelection(start: { col: number; row: number }, end: { col: number; row: number }) {
+    // Determine the direction of selection
+    let startCol = start.col;
+    let startRow = start.row;
+    let endCol = end.col;
+    let endRow = end.row;
+    
+    // Normalize: ensure start is before end
+    if (startRow > endRow || (startRow === endRow && startCol > endCol)) {
+      [startCol, startRow, endCol, endRow] = [endCol, endRow, startCol, startRow];
+    }
+    
+    // Calculate the length of the selection
+    let length: number;
+    if (startRow === endRow) {
+      // Same row
+      length = endCol - startCol + 1;
+    } else {
+      // Multiple rows
+      // First row: from startCol to end of line
+      // Middle rows: full lines
+      // Last row: from start to endCol
+      const cols = this.terminal.cols;
+      length = (cols - startCol) + // First row
+               (endRow - startRow - 1) * cols + // Middle rows
+               (endCol + 1); // Last row
+    }
+    
+    // Use xterm's select method with viewport-relative row
+    this.terminal.select(startCol, startRow, length);
+    
+    debugLog('[Terminal] updateTouchSelection:', { startCol, startRow, length, selection: this.terminal.getSelection() });
+  }
+
+  // Get selected text from terminal
+  getSelection(): string {
+    return this.terminal.getSelection();
+  }
+
+  // Check if there's any selection
+  hasSelection(): boolean {
+    return this.terminal.hasSelection();
+  }
+
+  // Clear selection
+  clearSelection() {
+    this.terminal.clearSelection();
+  }
+
+  // Copy selection to clipboard
+  async copySelection(): Promise<boolean> {
+    const selection = this.terminal.getSelection();
+    if (!selection) {
+      return false;
+    }
+    
+    try {
+      await navigator.clipboard.writeText(selection);
+      debugLog('[Terminal] Copied to clipboard:', selection.length, 'chars');
+      return true;
+    } catch (err) {
+      console.error('[Terminal] Failed to copy:', err);
+      // Fallback for older browsers
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = selection;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        return true;
+      } catch (fallbackErr) {
+        console.error('[Terminal] Fallback copy failed:', fallbackErr);
+        return false;
+      }
+    }
   }
 
   // Dispose and cleanup all resources

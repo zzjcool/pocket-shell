@@ -60,6 +60,8 @@ export class VirtualKeyboard {
   private isComposing = false;  // Track IME composition state
   private ctrlButton: HTMLElement | null = null;  // Cached Ctrl button
   private altButton: HTMLElement | null = null;   // Cached Alt button
+  private selectBtn: HTMLElement | null = null;   // Cached Select button
+  private copyBtn: HTMLElement | null = null;     // Cached Copy button
   private disposed = false;
   private eventCleanups: (() => void)[] = [];  // Track event listeners for cleanup
 
@@ -528,6 +530,73 @@ export class VirtualKeyboard {
     });
     shortcutsScroll.appendChild(logoutBtn);
     
+    // Selection mode button (icon)
+    this.selectBtn = document.createElement('button');
+    this.selectBtn.className = 'keyboard-btn shortcut-btn select-btn';
+    this.selectBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h3"/><path d="M20 7V4h-3"/><path d="M4 17v3h3"/><path d="M20 17v3h-3"/><line x1="9" y1="12" x2="15" y2="12"/></svg>';
+    this.selectBtn.title = '选择模式';
+    
+    let selectTouchMove = false;
+    let selectTouchStartX = 0;
+    let selectTouchStartY = 0;
+    this.selectBtn.addEventListener('touchstart', (e) => {
+      selectTouchStartX = e.touches[0].clientX;
+      selectTouchStartY = e.touches[0].clientY;
+      selectTouchMove = false;
+    }, { passive: true });
+    this.selectBtn.addEventListener('touchmove', (e) => {
+      const dx = Math.abs(e.touches[0].clientX - selectTouchStartX);
+      const dy = Math.abs(e.touches[0].clientY - selectTouchStartY);
+      if (dx > 10 || dy > 10) selectTouchMove = true;
+    }, { passive: true });
+    this.selectBtn.addEventListener('touchend', (e) => {
+      if (!selectTouchMove) {
+        e.preventDefault();
+        this.toggleSelectionMode();
+      }
+    });
+    this.selectBtn.addEventListener('click', (e) => {
+      if (e.detail !== 0) {
+        e.preventDefault();
+        this.toggleSelectionMode();
+      }
+    });
+    shortcutsScroll.appendChild(this.selectBtn);
+    
+    // Copy button (only visible in selection mode)
+    this.copyBtn = document.createElement('button');
+    this.copyBtn.className = 'keyboard-btn shortcut-btn copy-btn';
+    this.copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    this.copyBtn.title = '复制选中';
+    this.copyBtn.style.display = 'none';  // Hidden by default
+    
+    let copyTouchMove = false;
+    let copyTouchStartX = 0;
+    let copyTouchStartY = 0;
+    this.copyBtn.addEventListener('touchstart', (e) => {
+      copyTouchStartX = e.touches[0].clientX;
+      copyTouchStartY = e.touches[0].clientY;
+      copyTouchMove = false;
+    }, { passive: true });
+    this.copyBtn.addEventListener('touchmove', (e) => {
+      const dx = Math.abs(e.touches[0].clientX - copyTouchStartX);
+      const dy = Math.abs(e.touches[0].clientY - copyTouchStartY);
+      if (dx > 10 || dy > 10) copyTouchMove = true;
+    }, { passive: true });
+    this.copyBtn.addEventListener('touchend', (e) => {
+      if (!copyTouchMove) {
+        e.preventDefault();
+        this.copySelection();
+      }
+    });
+    this.copyBtn.addEventListener('click', (e) => {
+      if (e.detail !== 0) {
+        e.preventDefault();
+        this.copySelection();
+      }
+    });
+    shortcutsScroll.appendChild(this.copyBtn);
+    
     // Ctrl shortcuts (^C, ^L)
     ctrlShortcuts.forEach((shortcut) => {
       const btn = this.createButton(shortcut.label, () => {
@@ -777,6 +846,38 @@ export class VirtualKeyboard {
     }
   }
 
+  private toggleSelectionMode() {
+    const newState = !this.terminal.isSelectionMode();
+    this.terminal.setSelectionMode(newState);
+    
+    // Update button states
+    if (this.selectBtn) {
+      this.selectBtn.classList.toggle('active', newState);
+    }
+    if (this.copyBtn) {
+      this.copyBtn.style.display = newState ? '' : 'none';
+    }
+    
+    debugLog('[Keyboard] toggleSelectionMode:', newState);
+  }
+
+  private async copySelection() {
+    const success = await this.terminal.copySelection();
+    
+    if (success) {
+      // Visual feedback - briefly highlight the copy button
+      if (this.copyBtn) {
+        this.copyBtn.classList.add('copied');
+        setTimeout(() => {
+          this.copyBtn?.classList.remove('copied');
+        }, 500);
+      }
+      debugLog('[Keyboard] copySelection: success');
+    } else {
+      debugLog('[Keyboard] copySelection: no selection or failed');
+    }
+  }
+
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
@@ -798,5 +899,7 @@ export class VirtualKeyboard {
     this.inputArea = null;
     this.ctrlButton = null;
     this.altButton = null;
+    this.selectBtn = null;
+    this.copyBtn = null;
   }
 }
