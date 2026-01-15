@@ -19,6 +19,17 @@ type loginResponse struct {
 	ExpiresIn int    `json:"expires_in"`
 }
 
+// Pre-allocated common error responses
+var (
+	errUnauthorizedJSON      = []byte(`{"error":"Unauthorized"}`)
+	errInvalidCredentialsJSON = []byte(`{"error":"Invalid credentials"}`)
+	errInvalidRequestJSON    = []byte(`{"error":"Invalid request body"}`)
+	errSessionNotFoundJSON   = []byte(`{"error":"Session not found"}`)
+	errAccessDeniedJSON      = []byte(`{"error":"Access denied"}`)
+	loggedOutJSON            = []byte(`{"message":"Logged out"}`)
+	sessionDeletedJSON       = []byte(`{"message":"Session deleted"}`)
+)
+
 type errorResponse struct {
 	Error string `json:"error"`
 }
@@ -31,13 +42,13 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Invalid request body"})
+		writeJSONRaw(w, http.StatusBadRequest, errInvalidRequestJSON)
 		return
 	}
 
 	user, err := h.authProvider.Authenticate(req.Username, req.Password)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "Invalid credentials"})
+		writeJSONRaw(w, http.StatusUnauthorized, errInvalidCredentialsJSON)
 		return
 	}
 
@@ -78,7 +89,7 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 	})
 
-	writeJSON(w, http.StatusOK, map[string]string{"message": "Logged out"})
+	writeJSONRaw(w, http.StatusOK, loggedOutJSON)
 }
 
 type sessionInfo struct {
@@ -89,7 +100,7 @@ type sessionInfo struct {
 func (h *Handler) handleSessions(w http.ResponseWriter, r *http.Request) {
 	claims, err := h.authenticate(r)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "Unauthorized"})
+		writeJSONRaw(w, http.StatusUnauthorized, errUnauthorizedJSON)
 		return
 	}
 
@@ -129,7 +140,7 @@ func (h *Handler) handleSessionDelete(w http.ResponseWriter, r *http.Request) {
 
 	claims, err := h.authenticate(r)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "Unauthorized"})
+		writeJSONRaw(w, http.StatusUnauthorized, errUnauthorizedJSON)
 		return
 	}
 
@@ -143,12 +154,12 @@ func (h *Handler) handleSessionDelete(w http.ResponseWriter, r *http.Request) {
 	// Verify session belongs to user
 	session, ok := h.sessionManager.Get(sessionID)
 	if !ok {
-		writeJSON(w, http.StatusNotFound, errorResponse{Error: "Session not found"})
+		writeJSONRaw(w, http.StatusNotFound, errSessionNotFoundJSON)
 		return
 	}
 
 	if session.UserID != claims.UserID {
-		writeJSON(w, http.StatusForbidden, errorResponse{Error: "Access denied"})
+		writeJSONRaw(w, http.StatusForbidden, errAccessDeniedJSON)
 		return
 	}
 
@@ -157,7 +168,7 @@ func (h *Handler) handleSessionDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"message": "Session deleted"})
+	writeJSONRaw(w, http.StatusOK, sessionDeletedJSON)
 }
 
 func (h *Handler) authenticate(r *http.Request) (*auth.Claims, error) {
@@ -187,4 +198,11 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)
+}
+
+// writeJSONRaw writes pre-allocated JSON bytes directly
+func writeJSONRaw(w http.ResponseWriter, status int, data []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	w.Write(data)
 }

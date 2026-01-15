@@ -6,10 +6,19 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"nhooyr.io/websocket"
 )
+
+// Buffer pool to reduce GC pressure
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 8192) // 8KB buffer for better throughput
+		return &buf
+	},
+}
 
 type wsMessage struct {
 	Type string          `json:"type"`
@@ -66,7 +75,10 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	// Read from PTY and send to WebSocket
 	go func() {
-		buf := make([]byte, 4096)
+		bufPtr := bufferPool.Get().(*[]byte)
+		buf := *bufPtr
+		defer bufferPool.Put(bufPtr)
+		
 		restartCount := 0
 		const maxRestarts = 5
 		const restartDelay = 500 * time.Millisecond

@@ -2,6 +2,7 @@ package session
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,7 +15,7 @@ type Session struct {
 	UserID    string
 	PTY       *terminal.PTY
 	CreatedAt time.Time
-	LastUsed  time.Time
+	lastUsed  atomic.Int64 // Unix nano timestamp for lock-free access
 	mu        sync.Mutex
 }
 
@@ -30,15 +31,18 @@ func NewSession(userID string) (*Session, error) {
 		UserID:    userID,
 		PTY:       pty,
 		CreatedAt: time.Now(),
-		LastUsed:  time.Now(),
+		lastUsed:  func() atomic.Int64 { var v atomic.Int64; v.Store(time.Now().UnixNano()); return v }(),
 	}, nil
 }
 
-// Touch updates the last used time
+// Touch updates the last used time (lock-free)
 func (s *Session) Touch() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.LastUsed = time.Now()
+	s.lastUsed.Store(time.Now().UnixNano())
+}
+
+// GetLastUsed returns the last used time
+func (s *Session) GetLastUsed() time.Time {
+	return time.Unix(0, s.lastUsed.Load())
 }
 
 // RestartPTY restarts the PTY with a new shell
@@ -115,9 +119,7 @@ func (m *Manager) cleanupStale(timeout time.Duration) {
 
 	now := time.Now()
 	for id, session := range m.sessions {
-		session.mu.Lock()
-		lastUsed := session.LastUsed
-		session.mu.Unlock()
+		lastUsed := session.GetLastUsed()
 
 		if now.Sub(lastUsed) > timeout {
 			session.Close()
