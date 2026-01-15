@@ -140,22 +140,36 @@
       display: block;
     }
 
-    /* Hide xterm scrollbar (xterm v6 compatible) */
-    .xterm-viewport::-webkit-scrollbar {
-      display: none !important;
-      width: 0 !important;
-    }
-
-    .xterm-viewport {
+    /* Hide xterm scrollbar visually but keep scroll functionality */
+    .xterm-viewport,
+    .xterm .xterm-viewport {
+      overflow-y: scroll !important;
       scrollbar-width: none !important;
       -ms-overflow-style: none !important;
-      overflow-y: hidden !important;
+      -webkit-overflow-scrolling: touch;
+      background-color: transparent !important;
+    }
+
+    .xterm-viewport::-webkit-scrollbar,
+    .xterm .xterm-viewport::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      background: transparent !important;
+      -webkit-appearance: none !important;
+    }
+
+    /* Hide xterm's custom scrollbar element visually only */
+    .xterm .xterm-scrollable-element > .scrollbar,
+    .xterm .xterm-scrollable-element > .scrollbar.vertical {
+      opacity: 0 !important;
+      width: 0 !important;
     }
 
     /* Force xterm to use full width without scrollbar space */
     .xterm .xterm-viewport {
       width: 100% !important;
-      overflow-y: hidden !important;
+      right: 0 !important;
     }
 
     .xterm .xterm-screen {
@@ -302,17 +316,28 @@
     .shortcuts-scroll {
       display: flex;
       gap: 4px;
-      overflow-x: auto;
+      overflow-x: scroll;
       overflow-y: hidden;
       -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-      -ms-overflow-style: none;
-      padding: 0;
-      touch-action: pan-x;  /* Allow horizontal scroll on iOS */
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
+      padding: 2px 0;
+      touch-action: pan-x;
+      /* Clip content to hide any overflow */
+      clip-path: inset(0);
     }
 
     .shortcuts-scroll::-webkit-scrollbar {
-      display: none;
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      background: transparent !important;
+    }
+
+    /* Buttons inside shortcuts must allow horizontal scroll */
+    .shortcuts-scroll .keyboard-btn {
+      touch-action: pan-x;
+      pointer-events: auto;
     }
 
     .shortcut-btn {

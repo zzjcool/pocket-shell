@@ -597,6 +597,8 @@ export class VirtualKeyboard {
     this.container.appendChild(shortcutsRow);
   }
 
+  // Removed custom scroll handling - using native CSS scroll with hidden scrollbar
+
   private createRow(className: string): HTMLElement {
     const row = document.createElement('div');
     row.className = `keyboard-row ${className}`;

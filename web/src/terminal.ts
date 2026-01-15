@@ -528,10 +528,20 @@ export class TerminalManager {
   }
 
   // Setup pinch-to-zoom gesture for font size adjustment
+  // And single-finger swipe for scrolling terminal history
   private setupPinchZoom() {
     let initialDistance = 0;
     let initialFontSize = this.fontSize;
     let isPinching = false;
+    
+    // Single finger scroll state
+    let isScrolling = false;
+    let scrollStartY = 0;
+    let lastY = 0;
+    let lastTime = 0;
+    let velocity = 0;
+    let momentumId: number | null = null;
+    let accumulatedDelta = 0;
 
     const getDistance = (touches: TouchList): number => {
       if (touches.length < 2) return 0;
@@ -539,33 +549,109 @@ export class TerminalManager {
       const dy = touches[1].clientY - touches[0].clientY;
       return Math.sqrt(dx * dx + dy * dy);
     };
+    
+    const stopMomentum = () => {
+      if (momentumId !== null) {
+        cancelAnimationFrame(momentumId);
+        momentumId = null;
+      }
+    };
+    
+    // Use xterm's scrollLines API for scrolling
+    const scrollByLines = (lines: number) => {
+      this.terminal.scrollLines(lines);
+    };
+    
+    const applyMomentum = () => {
+      if (Math.abs(velocity) < 0.5) {
+        momentumId = null;
+        return;
+      }
+      
+      // Convert velocity to lines (roughly 16px per line)
+      const lines = Math.round(velocity / 2);
+      if (lines !== 0) {
+        scrollByLines(lines);
+      }
+      
+      velocity *= 0.92; // Friction
+      momentumId = requestAnimationFrame(applyMomentum);
+    };
 
     this.container.addEventListener('touchstart', (e: TouchEvent) => {
+      stopMomentum();
+      
       if (e.touches.length === 2) {
+        // Two finger pinch
         isPinching = true;
+        isScrolling = false;
         initialDistance = getDistance(e.touches);
         initialFontSize = this.fontSize;
         e.preventDefault();
+      } else if (e.touches.length === 1) {
+        // Single finger - prepare for scroll
+        isScrolling = true;
+        scrollStartY = e.touches[0].clientY;
+        lastY = scrollStartY;
+        lastTime = Date.now();
+        velocity = 0;
+        accumulatedDelta = 0;
       }
     }, { passive: false });
 
     this.container.addEventListener('touchmove', (e: TouchEvent) => {
-      if (!isPinching || e.touches.length !== 2) return;
-      
-      const currentDistance = getDistance(e.touches);
-      const scale = currentDistance / initialDistance;
-      const newFontSize = initialFontSize * scale;
-      
-      this.setFontSize(newFontSize);
-      e.preventDefault();
+      if (isPinching && e.touches.length === 2) {
+        const currentDistance = getDistance(e.touches);
+        const scale = currentDistance / initialDistance;
+        const newFontSize = initialFontSize * scale;
+        
+        this.setFontSize(newFontSize);
+        e.preventDefault();
+      } else if (isScrolling && e.touches.length === 1 && !isPinching) {
+        const currentY = e.touches[0].clientY;
+        const currentTime = Date.now();
+        const deltaY = lastY - currentY;
+        
+        // Calculate velocity for momentum
+        const timeDelta = currentTime - lastTime;
+        if (timeDelta > 0) {
+          velocity = deltaY / timeDelta * 16;
+        }
+        
+        // Accumulate delta and scroll by lines when threshold reached
+        accumulatedDelta += deltaY;
+        const lineHeight = this.fontSize * 1.2; // Approximate line height
+        const linesToScroll = Math.trunc(accumulatedDelta / lineHeight);
+        
+        if (linesToScroll !== 0) {
+          scrollByLines(linesToScroll);
+          accumulatedDelta -= linesToScroll * lineHeight;
+        }
+        
+        lastY = currentY;
+        lastTime = currentTime;
+        
+        e.preventDefault(); // Prevent page scroll
+      }
     }, { passive: false });
 
-    this.container.addEventListener('touchend', () => {
-      isPinching = false;
+    this.container.addEventListener('touchend', (e: TouchEvent) => {
+      if (isPinching) {
+        isPinching = false;
+      }
+      if (isScrolling && e.touches.length === 0) {
+        isScrolling = false;
+        // Apply momentum scrolling
+        if (Math.abs(velocity) > 2) {
+          momentumId = requestAnimationFrame(applyMomentum);
+        }
+      }
     });
 
     this.container.addEventListener('touchcancel', () => {
       isPinching = false;
+      isScrolling = false;
+      stopMomentum();
     });
   }
 
