@@ -495,6 +495,50 @@ export class VirtualKeyboard {
     logoutBtn.classList.add('quick-btn', 'logout-btn');
     quickRow.appendChild(logoutBtn);
     
+    // Keyboard lock button (prevents soft keyboard from appearing)
+    const lockBtn = document.createElement('button');
+    lockBtn.className = 'keyboard-btn quick-btn lock-btn';
+    lockBtn.textContent = '🔓';
+    lockBtn.title = '锁定键盘';
+    
+    const updateLockState = (newLockState: boolean, focusInput: boolean) => {
+      debugLog('[Lock] updateLockState called, newLockState:', newLockState, 'focusInput:', focusInput);
+      this.terminal.setKeyboardLocked(newLockState);
+      lockBtn.classList.toggle('active', newLockState);
+      lockBtn.textContent = newLockState ? '🔒' : '🔓';
+      lockBtn.title = newLockState ? '解锁键盘' : '锁定键盘';
+      
+      // On unlock, focus the input area to trigger soft keyboard
+      if (focusInput && !newLockState && this.inputArea) {
+        debugLog('[Lock] focusing inputArea');
+        this.inputArea.focus();
+        debugLog('[Lock] inputArea focused, activeElement:', document.activeElement);
+      }
+    };
+    
+    // Track if touch handled to avoid double triggering
+    let touchHandled = false;
+    
+    // touchend is the key event for iOS Safari to recognize user gesture for keyboard
+    lockBtn.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      touchHandled = true;
+      const newLockState = !this.terminal.isKeyboardLocked();
+      updateLockState(newLockState, true);
+    }, { passive: false });
+    
+    // Fallback click for non-touch devices
+    lockBtn.addEventListener('click', (e) => {
+      if (touchHandled) {
+        touchHandled = false;
+        return;
+      }
+      e.preventDefault();
+      const newLockState = !this.terminal.isKeyboardLocked();
+      updateLockState(newLockState, true);
+    });
+    quickRow.appendChild(lockBtn);
+    
     quickCommands.forEach((cmd) => {
       const btn = this.createButton(cmd.label, () => {
         this.terminal.sendKey(cmd.key);

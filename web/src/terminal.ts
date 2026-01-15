@@ -80,6 +80,9 @@ export class TerminalManager {
   private debouncedFit: (() => void) | null = null;
   private disposed = false;
   
+  // Keyboard lock - prevents soft keyboard from appearing
+  private keyboardLocked = false;
+  
   // Message batching for performance
   private outputBuffer = '';
   private outputFlushScheduled = false;
@@ -577,6 +580,38 @@ export class TerminalManager {
   // Set input interceptor for modifier keys (Ctrl, Alt)
   setInputInterceptor(interceptor: ((data: string) => string | null) | null) {
     this.inputInterceptor = interceptor;
+  }
+
+  // Lock/unlock keyboard to prevent soft keyboard from appearing
+  // Uses CSS class to disable pointer events - simple and reliable
+  setKeyboardLocked(locked: boolean) {
+    this.keyboardLocked = locked;
+    debugLog('[Terminal] setKeyboardLocked:', locked);
+    
+    const xtermTextarea = this.container.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement;
+    
+    if (locked) {
+      // Add CSS class to disable pointer events on the terminal
+      this.container.classList.add('keyboard-locked');
+      // Make textarea readonly instead of blur - avoids iOS Safari keyboard state issues
+      if (xtermTextarea) {
+        xtermTextarea.readOnly = true;
+        // Move focus away to a non-input element to hide keyboard
+        // Using document.body instead of blur() to avoid Safari state issues
+        (document.activeElement as HTMLElement)?.blur?.();
+      }
+    } else {
+      // Remove CSS class
+      this.container.classList.remove('keyboard-locked');
+      // Restore textarea
+      if (xtermTextarea) {
+        xtermTextarea.readOnly = false;
+      }
+    }
+  }
+
+  isKeyboardLocked(): boolean {
+    return this.keyboardLocked;
   }
 
   // Dispose and cleanup all resources
