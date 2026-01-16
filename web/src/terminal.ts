@@ -686,6 +686,7 @@ export class TerminalManager {
     let velocity = 0;
     let momentumId: number | null = null;
     let accumulatedDelta = 0;
+    let lastTouch: Touch | null = null;  // Store last touch for momentum in alternate screen
 
     const getDistance = (touches: TouchList): number => {
       if (touches.length < 2) return 0;
@@ -701,21 +702,58 @@ export class TerminalManager {
       }
     };
     
-    // Use xterm's scrollLines API for scrolling
-    const scrollByLines = (lines: number) => {
-      this.terminal.scrollLines(lines);
+    // Check if terminal is in alternate screen buffer (used by fullscreen apps like vim, htop, zellij)
+    const isAlternateBuffer = (): boolean => {
+      // xterm.js buffer.active.type is 'alternate' when in alternate screen
+      return this.terminal.buffer.active.type === 'alternate';
+    };
+    
+    // Send mouse wheel escape sequence to the terminal application
+    // SGR encoding: \x1b[<button;col;rowM for press
+    // Button 64 = wheel up, 65 = wheel down
+    const sendMouseWheel = (up: boolean, col: number, row: number) => {
+      const button = up ? 64 : 65;
+      // SGR mouse encoding: CSI < button ; col ; row M
+      const seq = `\x1b[<${button};${col};${row}M`;
+      this.send({ type: 'input', data: seq });
+    };
+    
+    // Use xterm's scrollLines API for scrolling, or send mouse wheel events for alternate screen
+    const scrollByLines = (lines: number, touch?: Touch) => {
+      if (isAlternateBuffer()) {
+        // In alternate screen (zellij, vim, etc.), send mouse wheel events
+        let col = 1, row = 1;
+        if (touch) {
+          const pos = this.touchToTerminalPosition(touch);
+          if (pos) {
+            col = pos.col + 1;  // 1-based
+            row = pos.row + 1;  // 1-based
+          }
+        }
+        // Send one wheel event per line for better granularity
+        const up = lines < 0;
+        const count = Math.abs(lines);
+        for (let i = 0; i < count; i++) {
+          sendMouseWheel(up, col, row);
+        }
+      } else {
+        // Normal buffer - use xterm's built-in scroll
+        this.terminal.scrollLines(lines);
+      }
     };
     
     const applyMomentum = () => {
       if (Math.abs(velocity) < 0.5) {
         momentumId = null;
+        lastTouch = null;
         return;
       }
       
       // Convert velocity to lines (roughly 16px per line)
       const lines = Math.round(velocity / 2);
       if (lines !== 0) {
-        scrollByLines(lines);
+        // For alternate screen, use last touch position; for normal, touch doesn't matter
+        scrollByLines(lines, lastTouch || undefined);
       }
       
       velocity *= 0.92; // Friction
@@ -790,12 +828,13 @@ export class TerminalManager {
         const linesToScroll = Math.trunc(accumulatedDelta / lineHeight);
         
         if (linesToScroll !== 0) {
-          scrollByLines(linesToScroll);
+          scrollByLines(linesToScroll, e.touches[0]);
           accumulatedDelta -= linesToScroll * lineHeight;
         }
         
         lastY = currentY;
         lastTime = currentTime;
+        lastTouch = e.touches[0];  // Save touch for momentum
         
         e.preventDefault(); // Prevent page scroll
       }
