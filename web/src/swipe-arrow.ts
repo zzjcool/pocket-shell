@@ -41,8 +41,8 @@ type Direction = keyof typeof ARROW_KEYS;
 interface SwipeArrowOptions {
   /** Callback to send key to terminal */
   onSendKey: (key: string) => void;
-  /** Callback to lock/unlock keyboard (prevents soft keyboard from appearing) */
-  onKeyboardLock?: (locked: boolean) => void;
+  /** Callback to temporarily disable textarea focus (for iOS Safari) */
+  onGestureActive?: (active: boolean) => void;
   /** Long press delay in ms (default: 500) */
   longPressDelay?: number;
   /** Minimum distance to trigger direction (default: 20px) */
@@ -59,7 +59,7 @@ interface SwipeArrowOptions {
 
 export class SwipeArrowController {
   private element: HTMLElement;
-  private options: Required<Omit<SwipeArrowOptions, 'onKeyboardLock'>> & Pick<SwipeArrowOptions, 'onKeyboardLock'>;
+  private options: Required<SwipeArrowOptions>;
   
   // Touch state
   private touchId: number | null = null;
@@ -71,9 +71,6 @@ export class SwipeArrowController {
   // Long press state
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
   private isActive = false;
-  
-  // Track if we locked the keyboard (so we know to unlock it)
-  private didLockKeyboard = false;
   
   // Repeat state
   private repeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -90,7 +87,11 @@ export class SwipeArrowController {
     touchmove: (e: TouchEvent) => void;
     touchend: (e: TouchEvent) => void;
     touchcancel: (e: TouchEvent) => void;
+    click: (e: MouseEvent) => void;
   };
+  
+  // Flag to block next click event (for iOS Safari)
+  private blockNextClick = false;
   
   constructor(element: HTMLElement, options: SwipeArrowOptions) {
     this.element = element;
@@ -110,19 +111,23 @@ export class SwipeArrowController {
       touchmove: this.handleTouchMove.bind(this),
       touchend: this.handleTouchEnd.bind(this),
       touchcancel: this.handleTouchEnd.bind(this),
+      click: this.handleClick.bind(this),
     };
     
     this.attach();
   }
   
   private attach() {
-    // Use capture phase to ensure we get events before they're blocked
+    // Use capture phase to ensure we get events before they reach the terminal textarea
+    // This is critical for preventing keyboard popup on touchend
     this.element.addEventListener('touchstart', this.boundHandlers.touchstart, { passive: false, capture: true });
-    // Listen on document for touchmove/touchend/touchcancel to ensure we always get them
+    this.element.addEventListener('touchend', this.boundHandlers.touchend, { passive: false, capture: true });
+    this.element.addEventListener('touchcancel', this.boundHandlers.touchcancel, { passive: false, capture: true });
+    // Block click events that follow our gesture (iOS Safari generates click after touchend)
+    this.element.addEventListener('click', this.boundHandlers.click, { passive: false, capture: true });
+    // Listen on document for touchmove to ensure we always get them
     // even if pointer-events:none is applied to the element
     document.addEventListener('touchmove', this.boundHandlers.touchmove, { passive: false });
-    document.addEventListener('touchend', this.boundHandlers.touchend, { passive: false });
-    document.addEventListener('touchcancel', this.boundHandlers.touchcancel, { passive: false });
   }
   
   private handleTouchStart(e: TouchEvent) {
@@ -185,7 +190,14 @@ export class SwipeArrowController {
     if (touch) {
       // Our touch ended
       if (this.isActive) {
+        // IMPORTANT: Prevent the touchend from reaching the terminal textarea
+        // This stops the keyboard from popping up when the gesture ends
         e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        // iOS Safari: block the synthetic click event that follows touchend
+        this.blockNextClick = true;
+        setTimeout(() => { this.blockNextClick = false; }, 500);
       }
       this.reset();
       return;
@@ -215,11 +227,9 @@ export class SwipeArrowController {
     
     debugLog('activated');
     
-    // Lock keyboard to prevent soft keyboard from appearing
-    if (this.options.onKeyboardLock) {
-      this.options.onKeyboardLock(true);
-      this.didLockKeyboard = true;
-    }
+    // Notify that gesture is active - this allows the terminal to temporarily
+    // disable the textarea to prevent keyboard popup on iOS Safari
+    this.options.onGestureActive?.(true);
     
     // Haptic feedback for activation
     this.vibrate(50);
@@ -236,19 +246,20 @@ export class SwipeArrowController {
   }
   
   private reset() {
+    const wasActive = this.isActive;
+    
     this.cancelLongPress();
     this.stopRepeat();
     this.hideIndicator();
     
-    // Unlock keyboard if we locked it
-    if (this.didLockKeyboard && this.options.onKeyboardLock) {
-      this.options.onKeyboardLock(false);
-      this.didLockKeyboard = false;
-    }
-    
     this.touchId = null;
     this.isActive = false;
     this.currentDirection = null;
+    
+    // Notify that gesture ended - restore textarea state
+    if (wasActive) {
+      this.options.onGestureActive?.(false);
+    }
   }
   
   private updateDirection(dx: number, dy: number, distance: number) {
@@ -410,12 +421,24 @@ export class SwipeArrowController {
     }
   }
   
+  // Handle click events - block synthetic clicks after gesture on iOS Safari
+  private handleClick(e: MouseEvent) {
+    if (this.blockNextClick) {
+      debugLog('blocking click after gesture');
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      this.blockNextClick = false;
+    }
+  }
+  
   dispose() {
     this.reset();
     
     this.element.removeEventListener('touchstart', this.boundHandlers.touchstart, { capture: true });
+    this.element.removeEventListener('touchend', this.boundHandlers.touchend, { capture: true });
+    this.element.removeEventListener('touchcancel', this.boundHandlers.touchcancel, { capture: true });
+    this.element.removeEventListener('click', this.boundHandlers.click, { capture: true });
     document.removeEventListener('touchmove', this.boundHandlers.touchmove);
-    document.removeEventListener('touchend', this.boundHandlers.touchend);
-    document.removeEventListener('touchcancel', this.boundHandlers.touchcancel);
   }
 }

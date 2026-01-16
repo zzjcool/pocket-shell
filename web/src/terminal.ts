@@ -837,15 +837,26 @@ export class TerminalManager {
       onSendKey: (key: string) => {
         this.sendKey(key);
       },
-      onKeyboardLock: (locked: boolean) => {
-        this.setKeyboardLocked(locked);
+      onGestureActive: (active: boolean) => {
+        // When gesture is active, temporarily disable the textarea to prevent
+        // iOS Safari from showing the keyboard when the gesture ends.
+        // We use pointer-events:none instead of readonly/disabled because
+        // those can cause the existing keyboard to close.
+        const xtermTextarea = this.container.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement;
+        if (xtermTextarea) {
+          if (active) {
+            xtermTextarea.style.pointerEvents = 'none';
+          } else {
+            xtermTextarea.style.pointerEvents = '';
+          }
+        }
       },
-      longPressDelay: 500,
-      minDistance: 20,
-      minRepeatDistance: 50,
-      maxRepeatDistance: 150,
-      slowRepeatInterval: 400,
-      fastRepeatInterval: 50,
+      longPressDelay: 300,
+      minDistance: 15,
+      minRepeatDistance: 30,
+      maxRepeatDistance: 120,
+      slowRepeatInterval: 300,
+      fastRepeatInterval: 40,
     });
   }
 
