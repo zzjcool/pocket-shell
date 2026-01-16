@@ -34,52 +34,62 @@ pocket-shell
 首次运行会打印随机生成的密码：
 
 ```
-Pocket Shell v0.0.10
+Pocket Shell v0.0.11
 Password: aB3dEf9x
 Listening on http://0.0.0.0:8080
 ```
 
 在手机浏览器打开地址，使用用户名 `admin` 和生成的密码登录。
 
-### 自定义设置
+### 使用示例
 
 ```bash
-# 自定义端口和密码
-pocket-shell -port 3000 -password mypassword
-
-# 自定义用户名
-pocket-shell -user john -password secret
-
-# 指定 shell
-pocket-shell -shell /bin/zsh
-
-# 查看帮助
-pocket-shell -help
+pocket-shell                     # 启动，使用随机密码
+pocket-shell -p 3000             # 使用 3000 端口
+pocket-shell -P mypass           # 设置密码
+pocket-shell -u john -P secret   # 自定义用户名和密码
+pocket-shell -s /bin/zsh         # 使用 zsh
 ```
 
 ## 命令行参数
 
-| 参数 | 默认值 | 描述 |
-|------|--------|------|
-| `-port` | `8080` | 服务端口 |
-| `-host` | `0.0.0.0` | 监听地址 |
-| `-user` | `admin` | 登录用户名 |
-| `-password` | 随机生成 | 登录密码 |
-| `-shell` | 系统默认 | 使用的 Shell (bash/zsh/sh) |
-| `-version` | - | 显示版本 |
-| `-help` | - | 显示帮助 |
+| 短参数 | 长参数 | 默认值 | 描述 |
+|--------|--------|--------|------|
+| `-p` | `--port` | `8080` | 服务端口 |
+| `-h` | `--host` | `0.0.0.0` | 监听地址 |
+| `-u` | `--user` | `admin` | 登录用户名 |
+| `-P` | `--pass` | 随机生成 | 登录密码 |
+| `-s` | `--shell` | 系统默认 | 使用的 Shell |
+| `-v` | `--version` | - | 显示版本 |
+| | `--help` | - | 显示帮助 |
 
-## 移动端键盘快捷键
+## 移动端虚拟键盘
 
-虚拟键盘提供快捷访问特殊按键：
+浮动虚拟键盘提供快捷访问特殊按键：
+
+### 修饰键
 
 | 按钮 | 功能 |
 |------|------|
-| `Ctrl` | 切换 Ctrl 修饰键（点击激活，再次点击取消） |
+| `Ctrl` | 切换 Ctrl 修饰键（点击激活，再次点击释放） |
 | `Alt` | 切换 Alt 修饰键 |
 | `Tab` | 发送 Tab 键 |
 | `Esc` | 发送 Escape 键 |
-| `↑` `↓` `←` `→` | 方向键（长按可连续输入） |
+
+### 方向键长按手势
+
+方向键支持特殊的长按手势，可以连续导航：
+
+1. **长按**任意方向键进入手势模式
+2. 手指位置会出现圆形指示器
+3. **滑动**任意方向可连续发送方向键
+4. 滑动距离越远，重复速度越快
+5. **松开**退出手势模式
+
+适用场景：
+- 浏览命令历史（上/下）
+- 在文本编辑器中移动光标（vim、nano）
+- 滚动查看长输出
 
 ### 快捷键栏
 
