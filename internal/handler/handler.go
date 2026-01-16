@@ -60,26 +60,51 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/health", h.handleHealth)
 }
 
-// withCacheHeaders wraps a handler to add cache headers for static assets
+// withCacheHeaders wraps a handler to add cache headers and explicit MIME types for static assets
 func (h *Handler) withCacheHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-		// Long cache for immutable assets (JS, CSS with content hash)
-		if strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css") {
+
+		// Set explicit Content-Type to avoid MIME type issues with reverse proxies
+		switch {
+		case strings.HasSuffix(path, ".js"):
+			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		} else if strings.HasSuffix(path, ".woff2") || strings.HasSuffix(path, ".woff") ||
-			strings.HasSuffix(path, ".ttf") || strings.HasSuffix(path, ".eot") {
-			// Long cache for fonts
+		case strings.HasSuffix(path, ".css"):
+			w.Header().Set("Content-Type", "text/css; charset=utf-8")
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		} else if strings.HasSuffix(path, ".png") || strings.HasSuffix(path, ".jpg") ||
-			strings.HasSuffix(path, ".jpeg") || strings.HasSuffix(path, ".gif") ||
-			strings.HasSuffix(path, ".svg") || strings.HasSuffix(path, ".ico") {
-			// Long cache for images
+		case strings.HasSuffix(path, ".woff2"):
+			w.Header().Set("Content-Type", "font/woff2")
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		case strings.HasSuffix(path, ".woff"):
+			w.Header().Set("Content-Type", "font/woff")
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		case strings.HasSuffix(path, ".ttf"):
+			w.Header().Set("Content-Type", "font/ttf")
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		case strings.HasSuffix(path, ".eot"):
+			w.Header().Set("Content-Type", "application/vnd.ms-fontobject")
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		case strings.HasSuffix(path, ".png"):
+			w.Header().Set("Content-Type", "image/png")
 			w.Header().Set("Cache-Control", "public, max-age=86400")
-		} else if path == "/" || strings.HasSuffix(path, ".html") {
-			// Short cache for HTML (revalidate)
+		case strings.HasSuffix(path, ".jpg"), strings.HasSuffix(path, ".jpeg"):
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		case strings.HasSuffix(path, ".gif"):
+			w.Header().Set("Content-Type", "image/gif")
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		case strings.HasSuffix(path, ".svg"):
+			w.Header().Set("Content-Type", "image/svg+xml")
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		case strings.HasSuffix(path, ".ico"):
+			w.Header().Set("Content-Type", "image/x-icon")
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		case path == "/" || strings.HasSuffix(path, ".html"):
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
 		}
+
 		next.ServeHTTP(w, r)
 	})
 }
