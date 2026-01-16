@@ -187,6 +187,28 @@
       font-size: 14px;
     }
 
+    /* Login Terminal View - SSH style */
+    .login-terminal-container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+      background: #1a1a2e;
+    }
+
+    #login-terminal-area {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      height: 100%;
+      padding: 10px;
+    }
+
+    #login-terminal-area .xterm {
+      height: 100%;
+      padding: 0;
+    }
+
     /* Terminal View */
     #terminal-area {
       flex: 1;

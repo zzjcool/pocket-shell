@@ -3,11 +3,13 @@ import './types'; // Import for Wake Lock API type declarations
 import { api } from './api';
 import { TerminalManager } from './terminal';
 import { VirtualKeyboard } from './keyboard';
+import { LoginTerminal } from './login-terminal';
 import './debug';  // Initialize debug panel if ?debug=1
 
 class App {
   private terminal: TerminalManager | null = null;
   private keyboard: VirtualKeyboard | null = null;
+  private loginTerminal: LoginTerminal | null = null;
   private wakeLock: WakeLockSentinel | null = null;
 
   async init() {
@@ -28,39 +30,33 @@ class App {
   }
 
   private showLoginView() {
+    // Dispose any existing login terminal
+    if (this.loginTerminal) {
+      this.loginTerminal.dispose();
+      this.loginTerminal = null;
+    }
+    
     const app = document.getElementById('app')!;
     app.innerHTML = `
-      <div class="login-container">
-        <div class="login-box">
-          <h1 class="login-title">Pocket Shell</h1>
-          <form id="login-form">
-            <div class="form-group">
-              <input type="text" id="username" placeholder="Username" autocomplete="username" required>
-            </div>
-            <div class="form-group">
-              <input type="password" id="password" placeholder="Password" autocomplete="current-password" required>
-            </div>
-            <button type="submit" class="login-btn">Login</button>
-            <p id="error-msg" class="error-msg"></p>
-          </form>
-        </div>
+      <div class="login-terminal-container">
+        <div id="login-terminal-area"></div>
       </div>
     `;
 
-    const form = document.getElementById('login-form') as HTMLFormElement;
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const username = (document.getElementById('username') as HTMLInputElement).value;
-      const password = (document.getElementById('password') as HTMLInputElement).value;
-      const errorMsg = document.getElementById('error-msg')!;
-
-      try {
-        await api.login(username, password);
+    const loginArea = document.getElementById('login-terminal-area')!;
+    this.loginTerminal = new LoginTerminal(loginArea, {
+      onLogin: () => {
+        // Dispose login terminal before showing main terminal
+        if (this.loginTerminal) {
+          this.loginTerminal.dispose();
+          this.loginTerminal = null;
+        }
         this.showTerminalView();
-      } catch (err) {
-        errorMsg.textContent = err instanceof Error ? err.message : 'Login failed';
       }
     });
+    
+    // Focus the login terminal
+    this.loginTerminal.focus();
   }
 
   private async showTerminalView() {
