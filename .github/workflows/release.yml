@@ -47,7 +47,6 @@ jobs:
         run: |
           cd web && npm install
           npm run build
-          cp static/index.html dist/
 
       - name: Build binary
         env:
