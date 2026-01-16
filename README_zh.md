@@ -49,6 +49,8 @@ pocket-shell -p 3000             # 使用 3000 端口
 pocket-shell -P mypass           # 设置密码
 pocket-shell -u john -P secret   # 自定义用户名和密码
 pocket-shell -s /bin/zsh         # 使用 zsh
+nohup pocket-shell &             # 后台运行
+nohup pocket-shell > ps.log 2>&1 &  # 后台运行并保存日志
 ```
 
 ## 命令行参数

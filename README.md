@@ -49,6 +49,8 @@ pocket-shell -p 3000             # Use port 3000
 pocket-shell -P mypass           # Set password
 pocket-shell -u john -P secret   # Custom user and password
 pocket-shell -s /bin/zsh         # Use zsh shell
+nohup pocket-shell &             # Run in background
+nohup pocket-shell > ps.log 2>&1 &  # Run in background with log
 ```
 
 ## Command Line Options
