@@ -423,6 +423,19 @@ export class TerminalManager {
         this.send({ type: 'input', data: '\x0c' }); // Ctrl+L
       }, 100);
       
+      // Inject mouse mode enable sequences directly into xterm.js
+      // This ensures xterm.js enters the correct mouse mode when reconnecting
+      // to a session where an app (like zellij) has already enabled mouse support.
+      // The sequences are:
+      // - 1000h: Basic mouse tracking (clicks)
+      // - 1002h: Button event tracking (drags)
+      // - 1003h: All mouse motion tracking
+      // - 1006h: SGR extended mouse mode
+      setTimeout(() => {
+        const mouseEnableSeq = '\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h';
+        this.terminal.write(mouseEnableSeq);
+      }, 150);
+      
       // Start ping interval (60s to reduce network overhead)
       this.pingInterval = setInterval(() => {
         this.send({ type: 'ping', data: null });
@@ -760,6 +773,28 @@ export class TerminalManager {
       momentumId = requestAnimationFrame(applyMomentum);
     };
 
+    // For alternate screen (zellij, vim, etc.), we need to dispatch synthetic mouse events
+    // because xterm.js handles mouse mode internally but touch events don't automatically
+    // trigger mouse event handlers in the same way across all browsers
+    const dispatchMouseEvent = (type: string, touch: Touch, button: number = 0) => {
+      const target = this.container.querySelector('.xterm-screen') || this.container;
+      const mouseEvent = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        button: button,
+        buttons: type === 'mouseup' ? 0 : 1,
+      });
+      target.dispatchEvent(mouseEvent);
+    };
+
+    // Touch state for tap detection
+    let touchStartInfo: { x: number; y: number; time: number; touch: Touch } | null = null;
+    const TAP_THRESHOLD_DISTANCE = 10;
+    const TAP_THRESHOLD_TIME = 300;
+
     this.container.addEventListener('touchstart', (e: TouchEvent) => {
       stopMomentum();
       
@@ -779,17 +814,31 @@ export class TerminalManager {
         // Two finger pinch
         isPinching = true;
         isScrolling = false;
+        touchStartInfo = null;
         initialDistance = getDistance(e.touches);
         initialFontSize = this.fontSize;
         e.preventDefault();
       } else if (e.touches.length === 1) {
-        // Single finger - prepare for scroll
+        // Single finger - prepare for scroll or tap
         isScrolling = true;
         scrollStartY = e.touches[0].clientY;
         lastY = scrollStartY;
         lastTime = Date.now();
         velocity = 0;
         accumulatedDelta = 0;
+        
+        // Record touch start for tap detection
+        touchStartInfo = {
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY,
+          time: Date.now(),
+          touch: e.touches[0]
+        };
+        
+        // In alternate buffer, dispatch mousedown for xterm.js to handle
+        if (isAlternateBuffer()) {
+          dispatchMouseEvent('mousedown', e.touches[0]);
+        }
       }
     }, { passive: false });
 
@@ -847,14 +896,37 @@ export class TerminalManager {
         // Keep touchSelectionStart for potential future use
         isPinching = false;
         isScrolling = false;
+        touchStartInfo = null;
         return;
       }
       
       if (isPinching) {
         isPinching = false;
+        touchStartInfo = null;
       }
       if (isScrolling && e.touches.length === 0) {
         isScrolling = false;
+        
+        // Check if this was a tap in alternate buffer
+        if (touchStartInfo && isAlternateBuffer()) {
+          const endTouch = e.changedTouches[0];
+          if (endTouch) {
+            const dx = endTouch.clientX - touchStartInfo.x;
+            const dy = endTouch.clientY - touchStartInfo.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const duration = Date.now() - touchStartInfo.time;
+            
+            // Dispatch mouseup for xterm.js - it will handle the click internally
+            dispatchMouseEvent('mouseup', endTouch);
+            
+            // If it was a quick tap with minimal movement, we're done
+            if (duration < TAP_THRESHOLD_TIME && distance < TAP_THRESHOLD_DISTANCE) {
+              touchStartInfo = null;
+              return;
+            }
+          }
+        }
+        touchStartInfo = null;
         // Apply momentum scrolling
         if (Math.abs(velocity) > 2) {
           momentumId = requestAnimationFrame(applyMomentum);
@@ -866,6 +938,7 @@ export class TerminalManager {
       isPinching = false;
       isScrolling = false;
       this.touchSelectionActive = false;
+      touchStartInfo = null;
       stopMomentum();
     });
   }

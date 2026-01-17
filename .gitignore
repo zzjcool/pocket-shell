@@ -13,3 +13,7 @@ web/dist/
 
 # OS
 .DS_Store
+
+# CodeBuddy
+CODEBUDDY.md
+.codebuddy/
