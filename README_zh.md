@@ -4,6 +4,9 @@
 
 [English](./README.md)
 
+<img width="603" height="1311" alt="Pocket Shell" src="https://github.com/user-attachments/assets/67bd176a-d5a4-4cd2-977d-89fc05dc8f2b" />
+
+
 ## 特性
 
 - **移动端优化** - 专为触屏设计的交互体验
