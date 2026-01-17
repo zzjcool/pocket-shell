@@ -93,21 +93,6 @@ This is especially useful for:
 - Moving cursor in text editors (vim, nano)
 - Scrolling through long outputs
 
-### Shortcut Bar
-
-Swipe horizontally to access more shortcuts:
-
-- `Ctrl+C` - Interrupt current process
-- `Ctrl+D` - Send EOF / Exit
-- `Ctrl+Z` - Suspend process
-- `Ctrl+L` - Clear screen
-- `Ctrl+A` - Move cursor to line start
-- `Ctrl+E` - Move cursor to line end
-- `Ctrl+U` - Clear line before cursor
-- `Ctrl+K` - Clear line after cursor
-- `Ctrl+R` - Search command history
-- `Ctrl+W` - Delete word before cursor
-
 ## Update
 
 ```bash
