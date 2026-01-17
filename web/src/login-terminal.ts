@@ -116,71 +116,47 @@ export class LoginTerminal {
   
   // Setup IME handling for mobile input methods
   private setupIMEHandling(container: HTMLElement) {
-    const xtermTextarea = container.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement;
+    const xtermTextarea = container.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null;
     let isComposing = false;
-    let flushTimeout: ReturnType<typeof setTimeout> | null = null;
-    let lastSentLength = 0;
-    
-    const clearFlushTimeout = () => {
-      if (flushTimeout) {
-        clearTimeout(flushTimeout);
-        flushTimeout = null;
-      }
+    let onDataCounter = 0;
+
+    const processInputData = (data: string) => {
+      if (!data) return;
+      const fixedData = data.replace(/\u00A0/g, ' ');
+      this.processInput(fixedData);
     };
-    
-    const clearTextarea = () => {
-      if (xtermTextarea) {
-        xtermTextarea.value = '';
-        lastSentLength = 0;
-      }
-    };
-    
-    // Flush pending input from textarea
-    const flushPendingInput = () => {
-      flushTimeout = null;
-      
-      if (xtermTextarea && xtermTextarea.value) {
-        const currentValue = xtermTextarea.value;
-        if (currentValue.length > lastSentLength) {
-          let pendingValue = currentValue.substring(lastSentLength);
-          // Replace non-breaking space with regular space
-          pendingValue = pendingValue.replace(/\u00A0/g, ' ');
-          this.processInput(pendingValue);
-          lastSentLength = currentValue.length;
-        }
-        xtermTextarea.value = '';
-        lastSentLength = 0;
-      }
-    };
-    
+
     if (xtermTextarea) {
       // Track composition state for IME
       xtermTextarea.addEventListener('compositionstart', () => {
         isComposing = true;
-        clearFlushTimeout();
       });
-      
+
       xtermTextarea.addEventListener('compositionend', () => {
         isComposing = false;
-        clearFlushTimeout();
-        flushTimeout = setTimeout(flushPendingInput, 150);
       });
-      
-      xtermTextarea.addEventListener('input', () => {
-        if (isComposing) return;
-        clearFlushTimeout();
-        flushTimeout = setTimeout(flushPendingInput, 150);
+
+      xtermTextarea.addEventListener('beforeinput', (e) => {
+        const inputEvent = e as InputEvent;
+        const data = inputEvent.data;
+        const inputType = inputEvent.inputType;
+        if (!data || !inputType || !inputType.startsWith('insert')) {
+          return;
+        }
+
+        const token = onDataCounter;
+        queueMicrotask(() => {
+          if (onDataCounter === token && !isComposing) {
+            processInputData(data);
+          }
+        });
       });
     }
-    
-    // Handle direct terminal input (non-IME)
+
+    // Handle direct terminal input (committed input)
     this.terminal.onData((data) => {
-      clearFlushTimeout();
-      clearTextarea();
-      
-      // Replace non-breaking space with regular space
-      const fixedData = data.replace(/\u00A0/g, ' ');
-      this.processInput(fixedData);
+      onDataCounter += 1;
+      processInputData(data);
     });
   }
   

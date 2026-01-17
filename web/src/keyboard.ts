@@ -58,6 +58,7 @@ export class VirtualKeyboard {
   private isMultilineMode = false;  // Multi-line input mode
   private inputArea: HTMLTextAreaElement | null = null;
   private isComposing = false;  // Track IME composition state
+  private pendingEnter = false;
   private ctrlButton: HTMLElement | null = null;  // Cached Ctrl button
   private altButton: HTMLElement | null = null;   // Cached Alt button
   private selectBtn: HTMLElement | null = null;   // Cached Select button
@@ -400,6 +401,11 @@ export class VirtualKeyboard {
       setTimeout(() => {
         this.isComposing = false;
         debugLog('[IME] isComposing set to false (after timeout)');
+        const shouldSend = this.pendingEnter && !this.isMultilineMode;
+        this.pendingEnter = false;
+        if (shouldSend) {
+          this.sendInputCommand();
+        }
       }, 0);
     });
     
@@ -407,8 +413,13 @@ export class VirtualKeyboard {
     this.inputArea.addEventListener('keydown', (e) => {
       const isIMEProcessing = e.keyCode === 229;
       debugLog('[Keyboard] keydown:', e.key, 'keyCode:', e.keyCode, 'e.isComposing:', e.isComposing, 'this.isComposing:', this.isComposing, 'isIMEProcessing:', isIMEProcessing);
+      const isImeActive = e.isComposing || this.isComposing || isIMEProcessing;
       
-      if (e.isComposing || this.isComposing || isIMEProcessing) {
+      if (isImeActive) {
+        if (e.key === 'Enter' && !this.isMultilineMode) {
+          this.pendingEnter = true;
+          debugLog('[Keyboard] IME active - deferring Enter');
+        }
         debugLog('[Keyboard] skipping - IME active');
         return;
       }

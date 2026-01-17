@@ -100,6 +100,8 @@ export class TerminalManager {
   // Message batching for performance
   private outputBuffer = '';
   private outputFlushScheduled = false;
+  private inputBuffer = '';
+  private inputFlushScheduled = false;
 
   constructor(container: HTMLElement) {
     // Load saved font size from cache
@@ -155,102 +157,56 @@ export class TerminalManager {
     
     this.fit();
 
-    // Workaround for iOS Safari predictive text and mobile IME issues
-    // xterm.js doesn't always fire onData correctly on mobile browsers
-    const xtermTextarea = container.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement;
+    // IME handling aligned with xterm composition flow
+    const xtermTextarea = container.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null;
     let isComposing = false;
-    let flushTimeout: ReturnType<typeof setTimeout> | null = null;
-    // Track what we've already sent to avoid duplicates
-    let lastSentLength = 0;
-    
-    const clearFlushTimeout = () => {
-      if (flushTimeout) {
-        clearTimeout(flushTimeout);
-        flushTimeout = null;
+    let onDataCounter = 0;
+
+    const processInputData = (data: string) => {
+      if (!data) return;
+      // Fix: Replace non-breaking space (U+00A0) with regular space
+      let fixedData = data.replace(/\u00A0/g, ' ');
+      const processed = this.inputInterceptor ? this.inputInterceptor(fixedData) : fixedData;
+      if (processed) {
+        this.queueInput(processed);
       }
     };
-    
-    // Clear textarea and reset tracking
-    const clearTextarea = () => {
-      if (xtermTextarea) {
-        xtermTextarea.value = '';
-        lastSentLength = 0;
-      }
-    };
-    
-    // Flush any pending input in textarea that xterm missed
-    const flushPendingInput = () => {
-      flushTimeout = null; // Mark as no longer scheduled
-      
-      debugLog('[XtermTextarea] flushPendingInput called, textareaValue:', JSON.stringify(xtermTextarea?.value));
-      
-      if (xtermTextarea && xtermTextarea.value) {
-        // Only send what hasn't been sent yet
-        const currentValue = xtermTextarea.value;
-        if (currentValue.length > lastSentLength) {
-          let pendingValue = currentValue.substring(lastSentLength);
-          // Fix: Replace non-breaking space (U+00A0) with regular space
-          // Some mobile keyboards insert NBSP instead of regular spaces
-          pendingValue = pendingValue.replace(/\u00A0/g, ' ');
-          debugLog('[XtermTextarea] FLUSH pending input:', JSON.stringify(pendingValue));
-          // Apply inputInterceptor if set (for modifier keys like Ctrl, Alt)
-          const processed = this.inputInterceptor ? this.inputInterceptor(pendingValue) : pendingValue;
-          debugLog('[XtermTextarea] FLUSH processed:', JSON.stringify(processed));
-          if (processed) {
-            this.send({ type: 'input', data: processed });
-          }
-          lastSentLength = currentValue.length;
-        }
-        // Clear textarea after flush
-        xtermTextarea.value = '';
-        lastSentLength = 0;
-      }
-    };
-    
+
     if (xtermTextarea) {
-      debugLog('[Terminal] Found xterm textarea, adding mobile input workaround');
-      
-      // Track composition state
+      debugLog('[Terminal] Found xterm textarea, wiring IME handlers');
+
       xtermTextarea.addEventListener('compositionstart', (e) => {
         debugLog('[XtermTextarea] compositionstart:', (e as CompositionEvent).data);
         isComposing = true;
-        clearFlushTimeout();
       });
-      
+
       xtermTextarea.addEventListener('compositionend', (e) => {
         const data = (e as CompositionEvent).data;
         debugLog('[XtermTextarea] compositionend:', data);
         isComposing = false;
-        // Schedule a flush to catch any missed input after composition
-        clearFlushTimeout();
-        flushTimeout = setTimeout(flushPendingInput, 150);
       });
-      
+
       xtermTextarea.addEventListener('beforeinput', (e) => {
         const inputEvent = e as InputEvent;
         debugLog('[XtermTextarea] beforeinput:', JSON.stringify(inputEvent.data), 'inputType:', inputEvent.inputType, 'isComposing:', isComposing);
-      });
-      
-      xtermTextarea.addEventListener('input', (e) => {
-        const target = e.target as HTMLTextAreaElement;
-        const inputEvent = e as InputEvent;
-        debugLog('[XtermTextarea] input:', JSON.stringify(target.value), 'inputType:', inputEvent.inputType, 'isComposing:', isComposing);
-        
-        // Skip during active composition
-        if (isComposing) {
+
+        const data = inputEvent.data;
+        const inputType = inputEvent.inputType;
+        if (!data || !inputType || !inputType.startsWith('insert')) {
           return;
         }
-        
-        // Schedule a flush - if xterm handles it via onData, the flush will find empty textarea
-        clearFlushTimeout();
-        flushTimeout = setTimeout(flushPendingInput, 150);
+
+        const token = onDataCounter;
+        queueMicrotask(() => {
+          if (onDataCounter === token && !isComposing) {
+            debugLog('[XtermTextarea] beforeinput fallback send:', JSON.stringify(data));
+            processInputData(data);
+          }
+        });
       });
     } else {
       debugLog('[Terminal] xterm textarea not found');
     }
-    
-    // Helper to clear textarea when xterm handles input
-    const onXtermData = clearTextarea;
 
     // Handle resize with debounce using ResizeObserver
     this.debouncedFit = debounce(() => this.fit(), 100);
@@ -271,23 +227,11 @@ export class TerminalManager {
     // Setup swipe arrow controller for long-press arrow key gestures
     this.setupSwipeArrow();
 
-    // Handle input - allow interceptor for modifier keys
+    // Handle input - rely on xterm onData for committed text
     this.terminal.onData((data) => {
+      onDataCounter += 1;
       debugLog('[Terminal] onData:', JSON.stringify(data), 'hasInterceptor:', !!this.inputInterceptor);
-      
-      // xterm handled this, cancel pending flush and clear textarea
-      debugLog('[Terminal] onData - canceling pending flush and clearing textarea');
-      clearFlushTimeout();
-      onXtermData();
-      
-      // Fix: Replace non-breaking space (U+00A0) with regular space
-      let fixedData = data.replace(/\u00A0/g, ' ');
-      
-      const processed = this.inputInterceptor ? this.inputInterceptor(fixedData) : fixedData;
-      debugLog('[Terminal] processed:', JSON.stringify(processed));
-      if (processed) {
-        this.send({ type: 'input', data: processed });
-      }
+      processInputData(data);
     });
   }
 
@@ -503,6 +447,35 @@ export class TerminalManager {
     }
   }
 
+  // Buffer input and flush on microtask to reduce churn
+  private queueInput(data: string) {
+    if (!data) return;
+    this.inputBuffer += data;
+    if (!this.inputFlushScheduled) {
+      this.inputFlushScheduled = true;
+      queueMicrotask(() => this.flushInput());
+    }
+  }
+
+  private flushInput() {
+    this.inputFlushScheduled = false;
+    if (!this.inputBuffer) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      debugLog('[Terminal] flushInput skipped - ws not open');
+      this.inputBuffer = '';
+      return;
+    }
+    if (this.ws.bufferedAmount > 512 * 1024) {
+      debugLog('[Terminal] flushInput backpressure:', this.ws.bufferedAmount);
+      this.inputFlushScheduled = true;
+      setTimeout(() => this.flushInput(), 16);
+      return;
+    }
+    const payload = this.inputBuffer;
+    this.inputBuffer = '';
+    this.send({ type: 'input', data: payload });
+  }
+
   // Buffer output and flush on next animation frame for better performance
   private bufferOutput(data: string) {
     this.outputBuffer += data;
@@ -521,7 +494,7 @@ export class TerminalManager {
   // Send special key
   sendKey(key: string) {
     debugLog('[Terminal] sendKey called:', JSON.stringify(key));
-    this.send({ type: 'input', data: key });
+    this.queueInput(key);
     this.terminal.focus();
   }
 
