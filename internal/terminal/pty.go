@@ -4,6 +4,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -23,11 +25,17 @@ func NewPTY(shell string) (*PTY, error) {
 	if shell == "" {
 		shell = os.Getenv("SHELL")
 		if shell == "" {
+			shell = detectDefaultShell()
+		}
+		if shell == "" {
 			shell = "/bin/sh"
 		}
 	}
 
 	cmd := exec.Command(shell)
+	if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
+		cmd.Dir = homeDir
+	}
 	cmd.Env = append(os.Environ(),
 		"TERM=xterm-256color",
 		"CLICOLOR=1",
@@ -44,6 +52,75 @@ func NewPTY(shell string) (*PTY, error) {
 		pty:  ptmx,
 		done: make(chan struct{}),
 	}, nil
+}
+
+func detectDefaultShell() string {
+	if shell := shellFromPasswd(); shell != "" {
+		return shell
+	}
+
+	for _, candidate := range []string{
+		"/bin/zsh",
+		"/usr/bin/zsh",
+		"/bin/bash",
+		"/usr/bin/bash",
+		"/bin/sh",
+		"/usr/bin/sh",
+	} {
+		if isExecutable(candidate) {
+			return candidate
+		}
+	}
+
+	for _, name := range []string{"zsh", "bash", "sh"} {
+		if path, err := exec.LookPath(name); err == nil {
+			return path
+		}
+	}
+
+	return ""
+}
+
+func shellFromPasswd() string {
+	current, err := user.Current()
+	if err != nil {
+		return ""
+	}
+
+	data, err := os.ReadFile("/etc/passwd")
+	if err != nil {
+		return ""
+	}
+
+	username := current.Username
+	uid := current.Uid
+	for _, line := range strings.Split(string(data), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.Split(line, ":")
+		if len(parts) < 7 {
+			continue
+		}
+		if parts[0] != username && parts[2] != uid {
+			continue
+		}
+		shell := parts[6]
+		if isExecutable(shell) {
+			return shell
+		}
+		return ""
+	}
+
+	return ""
+}
+
+func isExecutable(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	return info.Mode()&0111 != 0
 }
 
 // Read reads from the PTY

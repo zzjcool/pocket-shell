@@ -65,6 +65,10 @@ nohup pocket-shell > ps.log 2>&1 &  # 后台运行并保存日志
 | `-v` | `--version` | - | 显示版本 |
 | | `--help` | - | 显示帮助 |
 
+注意：
+- 未指定 `--shell` 时，会按顺序自动检测：`SHELL` 环境变量、`/etc/passwd` 中的登录 Shell、常见路径（`zsh`/`bash`/`sh`），最后通过 PATH 查找。
+- 新会话默认工作目录为用户的 home 目录。
+
 ## 移动端虚拟键盘
 
 浮动虚拟键盘提供快捷访问特殊按键：

@@ -65,6 +65,10 @@ nohup pocket-shell > ps.log 2>&1 &  # Run in background with log
 | `-v` | `--version` | - | Print version |
 | | `--help` | - | Show help |
 
+Notes:
+- If `--shell` is not set, the default shell is auto-detected in order: `SHELL` env, `/etc/passwd` login shell, common paths (`zsh`/`bash`/`sh`), then PATH lookup.
+- New sessions default to the user's home directory as the working directory.
+
 ## Mobile Virtual Keyboard
 
 The floating virtual keyboard provides quick access to special keys:
