@@ -110,6 +110,18 @@ curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.s
 curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh -s -- --update
 ```
 
+## 卸载
+
+```bash
+# 卸载
+curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/uninstall.sh | sh
+
+# 使用 wget
+wget -qO- https://raw.githubusercontent.com/zzjcool/pocket-shell/main/uninstall.sh | sh
+```
+
+如安装在自定义目录，请设置 `INSTALL_DIR`。
+
 ## 从源码构建
 
 环境要求：Go 1.21+, Node.js 18+

@@ -110,6 +110,18 @@ curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.s
 curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/install.sh | sh -s -- --update
 ```
 
+## Uninstall
+
+```bash
+# Uninstall
+curl -fsSL https://raw.githubusercontent.com/zzjcool/pocket-shell/main/uninstall.sh | sh
+
+# Using wget
+wget -qO- https://raw.githubusercontent.com/zzjcool/pocket-shell/main/uninstall.sh | sh
+```
+
+If you installed to a custom directory, set `INSTALL_DIR` accordingly.
+
 ## Build from Source
 
 Requirements: Go 1.21+, Node.js 18+
