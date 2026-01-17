@@ -4,6 +4,9 @@ A mobile-optimized web terminal that lets you use the command line smoothly on y
 
 [中文文档](./README_zh.md)
 
+<img width="603" height="1311" alt="Pocket Shell" src="https://github.com/user-attachments/assets/67bd176a-d5a4-4cd2-977d-89fc05dc8f2b" />
+
+
 ## Features
 
 - **Mobile Optimized** - Touch-friendly interface designed for phones
