@@ -5,7 +5,7 @@ const DEBUG = typeof window !== 'undefined' && window.location.search.includes('
 
 function debugLog(...args: unknown[]) {
   if (DEBUG) {
-    console.log(...args);
+    console.log('[Keyboard]', ...args);
   }
 }
 

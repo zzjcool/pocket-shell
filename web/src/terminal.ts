@@ -11,7 +11,7 @@ const DEBUG = typeof window !== 'undefined' && window.location.search.includes('
 
 function debugLog(...args: unknown[]) {
   if (DEBUG) {
-    console.log(...args);
+    console.log('[Terminal]', ...args);
   }
 }
 
@@ -414,27 +414,13 @@ export class TerminalManager {
       this.reconnectAttempts = 0;
       this.isReconnecting = false;
       // Don't clear terminal - we want to receive the refreshed screen from server
-      // Trigger a resize to force fullscreen apps like htop to redraw
-      this.forceRefresh();
       
-      // Send Ctrl+L after a short delay to trigger a screen redraw in fullscreen apps
-      // This helps apps like htop properly reinitialize the alternate screen buffer
+      // Delay the resize slightly to ensure mode restore sequences are processed first
+      // This is important for alternate screen apps (zellij, vim) - the resize triggers
+      // SIGWINCH which makes them redraw their content
       setTimeout(() => {
-        this.send({ type: 'input', data: '\x0c' }); // Ctrl+L
-      }, 100);
-      
-      // Inject mouse mode enable sequences directly into xterm.js
-      // This ensures xterm.js enters the correct mouse mode when reconnecting
-      // to a session where an app (like zellij) has already enabled mouse support.
-      // The sequences are:
-      // - 1000h: Basic mouse tracking (clicks)
-      // - 1002h: Button event tracking (drags)
-      // - 1003h: All mouse motion tracking
-      // - 1006h: SGR extended mouse mode
-      setTimeout(() => {
-        const mouseEnableSeq = '\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h';
-        this.terminal.write(mouseEnableSeq);
-      }, 150);
+        this.forceRefresh();
+      }, 50);
       
       // Start ping interval (60s to reduce network overhead)
       this.pingInterval = setInterval(() => {
@@ -835,10 +821,9 @@ export class TerminalManager {
           touch: e.touches[0]
         };
         
-        // In alternate buffer, dispatch mousedown for xterm.js to handle
-        if (isAlternateBuffer()) {
-          dispatchMouseEvent('mousedown', e.touches[0]);
-        }
+        // Note: We don't dispatch mousedown here immediately because we don't know
+        // if this is a tap or a scroll yet. Mousedown will be dispatched later
+        // if we determine this was a tap (short duration, minimal movement).
       }
     }, { passive: false });
 
@@ -916,11 +901,11 @@ export class TerminalManager {
             const distance = Math.sqrt(dx * dx + dy * dy);
             const duration = Date.now() - touchStartInfo.time;
             
-            // Dispatch mouseup for xterm.js - it will handle the click internally
-            dispatchMouseEvent('mouseup', endTouch);
-            
-            // If it was a quick tap with minimal movement, we're done
+            // If it was a quick tap with minimal movement, dispatch click events
             if (duration < TAP_THRESHOLD_TIME && distance < TAP_THRESHOLD_DISTANCE) {
+              // Dispatch mousedown then mouseup to simulate a click
+              dispatchMouseEvent('mousedown', endTouch);
+              dispatchMouseEvent('mouseup', endTouch);
               touchStartInfo = null;
               return;
             }

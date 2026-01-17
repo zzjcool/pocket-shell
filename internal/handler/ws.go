@@ -73,17 +73,38 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	session.Touch()
 
-	// Send buffered output history on reconnection
-	if history := session.OutputBuffer.Bytes(); len(history) > 0 {
-		dataBytes, _ := json.Marshal(string(history))
+	// Check if we're in alternate screen mode
+	inAlternateScreen := session.MouseMode.IsAlternateScreen()
+
+	// Send terminal mode sequences to restore state first
+	// This ensures xterm.js enters the correct mode before receiving content
+	if modeSeq := session.MouseMode.GetModeRestoreSequence(); modeSeq != "" {
+		dataBytes, _ := json.Marshal(modeSeq)
 		msg := wsMessage{
 			Type: "output",
 			Data: json.RawMessage(dataBytes),
 		}
 		msgBytes, _ := json.Marshal(msg)
 		if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
-			log.Printf("Failed to send output history: %v", err)
+			log.Printf("Failed to send mode restore sequence: %v", err)
 			return
+		}
+	}
+
+	// Send buffered output history on reconnection
+	// Skip history if in alternate screen - the app will redraw after resize
+	if !inAlternateScreen {
+		if history := session.OutputBuffer.Bytes(); len(history) > 0 {
+			dataBytes, _ := json.Marshal(string(history))
+			msg := wsMessage{
+				Type: "output",
+				Data: json.RawMessage(dataBytes),
+			}
+			msgBytes, _ := json.Marshal(msg)
+			if err := conn.Write(ctx, websocket.MessageText, msgBytes); err != nil {
+				log.Printf("Failed to send output history: %v", err)
+				return
+			}
 		}
 	}
 
@@ -156,6 +177,9 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			restartCount = 0
 
 		if n > 0 {
+			// Parse terminal mode escape sequences and update session state
+			session.MouseMode.Update(buf[:n])
+			
 			// Store output in session buffer for reconnection
 			session.OutputBuffer.Write(buf[:n])
 			

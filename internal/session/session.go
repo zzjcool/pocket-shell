@@ -1,6 +1,8 @@
 package session
 
 import (
+	"bytes"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -68,6 +70,177 @@ func (r *RingBuffer) Len() int {
 	return r.len
 }
 
+// MouseMode tracks the current mouse tracking mode state
+// These correspond to xterm mouse tracking modes:
+// - 1000: Basic mouse tracking (clicks)
+// - 1002: Button event tracking (drags)
+// - 1003: All mouse motion tracking
+// - 1006: SGR extended mouse mode (coordinates > 223)
+type MouseMode struct {
+	Mode1000        bool // Basic mouse tracking
+	Mode1002        bool // Button event tracking
+	Mode1003        bool // All motion tracking
+	Mode1006        bool // SGR extended mode
+	AlternateScreen bool // Whether in alternate screen buffer (vim, zellij, etc.)
+	mu              sync.Mutex
+}
+
+// Mouse mode escape sequence patterns
+var (
+	mouseMode1000Enable  = []byte("\x1b[?1000h")
+	mouseMode1000Disable = []byte("\x1b[?1000l")
+	mouseMode1002Enable  = []byte("\x1b[?1002h")
+	mouseMode1002Disable = []byte("\x1b[?1002l")
+	mouseMode1003Enable  = []byte("\x1b[?1003h")
+	mouseMode1003Disable = []byte("\x1b[?1003l")
+	mouseMode1006Enable  = []byte("\x1b[?1006h")
+	mouseMode1006Disable = []byte("\x1b[?1006l")
+	// Alternate screen buffer sequences
+	alternateScreenEnable  = []byte("\x1b[?1049h")
+	alternateScreenDisable = []byte("\x1b[?1049l")
+)
+
+// Update parses output data for mouse mode escape sequences and updates state
+func (m *MouseMode) Update(data []byte) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Check for alternate screen buffer sequences
+	if bytes.Contains(data, alternateScreenEnable) {
+		m.AlternateScreen = true
+	}
+	if bytes.Contains(data, alternateScreenDisable) {
+		m.AlternateScreen = false
+	}
+
+	// Check for mode enable/disable sequences
+	if bytes.Contains(data, mouseMode1000Enable) {
+		m.Mode1000 = true
+	}
+	if bytes.Contains(data, mouseMode1000Disable) {
+		m.Mode1000 = false
+	}
+	if bytes.Contains(data, mouseMode1002Enable) {
+		m.Mode1002 = true
+	}
+	if bytes.Contains(data, mouseMode1002Disable) {
+		m.Mode1002 = false
+	}
+	if bytes.Contains(data, mouseMode1003Enable) {
+		m.Mode1003 = true
+	}
+	if bytes.Contains(data, mouseMode1003Disable) {
+		m.Mode1003 = false
+	}
+	if bytes.Contains(data, mouseMode1006Enable) {
+		m.Mode1006 = true
+	}
+	if bytes.Contains(data, mouseMode1006Disable) {
+		m.Mode1006 = false
+	}
+}
+
+// DebugState returns a string describing the current state
+func (m *MouseMode) DebugState() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return fmt.Sprintf("1000=%v 1002=%v 1003=%v 1006=%v alt=%v", m.Mode1000, m.Mode1002, m.Mode1003, m.Mode1006, m.AlternateScreen)
+}
+
+// GetEnableSequence returns the escape sequence to restore current mouse mode
+// If in alternate screen but no explicit mouse mode was detected, enable all mouse modes
+// (this handles apps like zellij that may not send standard mouse mode sequences)
+func (m *MouseMode) GetEnableSequence() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// If we have explicit mouse modes set, use them
+	if m.Mode1000 || m.Mode1002 || m.Mode1003 || m.Mode1006 {
+		var seq string
+		if m.Mode1000 {
+			seq += "\x1b[?1000h"
+		}
+		if m.Mode1002 {
+			seq += "\x1b[?1002h"
+		}
+		if m.Mode1003 {
+			seq += "\x1b[?1003h"
+		}
+		if m.Mode1006 {
+			seq += "\x1b[?1006h"
+		}
+		return seq
+	}
+
+	// If in alternate screen but no mouse mode detected, enable full mouse support
+	// This handles apps like zellij that use mouse but may not send standard sequences
+	if m.AlternateScreen {
+		return "\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h"
+	}
+
+	return ""
+}
+
+// IsEnabled returns true if any mouse mode is enabled
+func (m *MouseMode) IsEnabled() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Mode1000 || m.Mode1002 || m.Mode1003 || m.Mode1006
+}
+
+// Reset clears all mouse mode states
+func (m *MouseMode) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Mode1000 = false
+	m.Mode1002 = false
+	m.Mode1003 = false
+	m.Mode1006 = false
+	m.AlternateScreen = false
+}
+
+// IsAlternateScreen returns true if in alternate screen buffer
+func (m *MouseMode) IsAlternateScreen() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.AlternateScreen
+}
+
+// GetModeRestoreSequence returns all escape sequences needed to restore terminal state
+// This includes alternate screen mode and mouse tracking modes
+func (m *MouseMode) GetModeRestoreSequence() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var seq string
+
+	// First, restore alternate screen if active
+	if m.AlternateScreen {
+		seq += "\x1b[?1049h"
+	}
+
+	// Then restore mouse modes
+	if m.Mode1000 || m.Mode1002 || m.Mode1003 || m.Mode1006 {
+		if m.Mode1000 {
+			seq += "\x1b[?1000h"
+		}
+		if m.Mode1002 {
+			seq += "\x1b[?1002h"
+		}
+		if m.Mode1003 {
+			seq += "\x1b[?1003h"
+		}
+		if m.Mode1006 {
+			seq += "\x1b[?1006h"
+		}
+	} else if m.AlternateScreen {
+		// If in alternate screen but no explicit mouse mode, enable full mouse support
+		seq += "\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h"
+	}
+
+	return seq
+}
+
 // Session represents a terminal session
 type Session struct {
 	ID           string
@@ -77,6 +250,7 @@ type Session struct {
 	lastUsed     atomic.Int64 // Unix nano timestamp for lock-free access
 	mu           sync.Mutex
 	OutputBuffer *RingBuffer // Stores recent output for reconnection
+	MouseMode    *MouseMode  // Tracks current mouse mode state
 }
 
 // NewSession creates a new session
@@ -93,6 +267,7 @@ func NewSession(userID string) (*Session, error) {
 		CreatedAt:    time.Now(),
 		lastUsed:     func() atomic.Int64 { var v atomic.Int64; v.Store(time.Now().UnixNano()); return v }(),
 		OutputBuffer: NewRingBuffer(DefaultOutputBufferSize),
+		MouseMode:    &MouseMode{},
 	}, nil
 }
 
@@ -123,8 +298,9 @@ func (s *Session) RestartPTY() error {
 	}
 
 	s.PTY = pty
-	// Reset output buffer for new shell
+	// Reset output buffer and mouse mode for new shell
 	s.OutputBuffer = NewRingBuffer(DefaultOutputBufferSize)
+	s.MouseMode = &MouseMode{}
 	return nil
 }
 
