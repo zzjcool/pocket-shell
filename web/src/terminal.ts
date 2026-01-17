@@ -850,6 +850,19 @@ export class TerminalManager {
         const currentTime = Date.now();
         const deltaY = lastY - currentY;
         
+        // In alternate buffer, check if movement is significant enough to be a scroll
+        // This prevents accidental scrolling during taps
+        if (touchStartInfo && isAlternateBuffer()) {
+          const dx = e.touches[0].clientX - touchStartInfo.x;
+          const dy = e.touches[0].clientY - touchStartInfo.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          // Don't start scrolling until we've moved more than tap threshold
+          if (distance < TAP_THRESHOLD_DISTANCE) {
+            e.preventDefault();
+            return;
+          }
+        }
+        
         // Calculate velocity for momentum
         const timeDelta = currentTime - lastTime;
         if (timeDelta > 0) {
