@@ -25,7 +25,7 @@ build: install-deps server
 
 # Development mode - run server with hot reload
 dev: web
-	go run ./cmd/server -P admin
+	go run ./cmd/server -P admin  -p  1112
 
 # Clean build artifacts
 clean:

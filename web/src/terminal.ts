@@ -160,10 +160,11 @@ export class TerminalManager {
     // IME handling aligned with xterm composition flow
     const xtermTextarea = container.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null;
     let isComposing = false;
-    let onDataCounter = 0;
+    let lastOnDataValue: string | null = null;  // Track the last data processed by onData
 
-    const processInputData = (data: string) => {
+    const processInputData = (data: string, source: string) => {
       if (!data) return;
+      debugLog('[Terminal] processInputData called from:', source, 'data:', JSON.stringify(data));
       // Fix: Replace non-breaking space (U+00A0) with regular space
       let fixedData = data.replace(/\u00A0/g, ' ');
       const processed = this.inputInterceptor ? this.inputInterceptor(fixedData) : fixedData;
@@ -188,7 +189,7 @@ export class TerminalManager {
 
       xtermTextarea.addEventListener('beforeinput', (e) => {
         const inputEvent = e as InputEvent;
-        debugLog('[XtermTextarea] beforeinput:', JSON.stringify(inputEvent.data), 'inputType:', inputEvent.inputType, 'isComposing:', isComposing);
+        debugLog('[XtermTextarea] beforeinput:', JSON.stringify(inputEvent.data), 'inputType:', inputEvent.inputType, 'isComposing:', isComposing, 'lastOnDataValue:', JSON.stringify(lastOnDataValue));
 
         const data = inputEvent.data;
         const inputType = inputEvent.inputType;
@@ -196,11 +197,24 @@ export class TerminalManager {
           return;
         }
 
-        const token = onDataCounter;
+        // If onData already handled this exact data, skip the fallback
+        if (lastOnDataValue === data) {
+          debugLog('[XtermTextarea] beforeinput SKIPPED, already handled by onData');
+          lastOnDataValue = null;  // Clear for next input
+          return;
+        }
+        
         queueMicrotask(() => {
-          if (onDataCounter === token && !isComposing) {
+          debugLog('[XtermTextarea] beforeinput microtask, data:', JSON.stringify(data), 'lastOnDataValue:', JSON.stringify(lastOnDataValue), 'isComposing:', isComposing);
+          // Check again in case onData fired between beforeinput and microtask
+          if (lastOnDataValue === data) {
+            debugLog('[XtermTextarea] beforeinput fallback SKIPPED in microtask, already handled by onData');
+            lastOnDataValue = null;
+            return;
+          }
+          if (!isComposing) {
             debugLog('[XtermTextarea] beforeinput fallback send:', JSON.stringify(data));
-            processInputData(data);
+            processInputData(data, 'beforeinput-fallback');
           }
         });
       });
@@ -229,9 +243,11 @@ export class TerminalManager {
 
     // Handle input - rely on xterm onData for committed text
     this.terminal.onData((data) => {
-      onDataCounter += 1;
-      debugLog('[Terminal] onData:', JSON.stringify(data), 'hasInterceptor:', !!this.inputInterceptor);
-      processInputData(data);
+      debugLog('[Terminal] onData fired, data:', JSON.stringify(data));
+      // Record what onData processed so beforeinput can check for duplicates
+      lastOnDataValue = data;
+      processInputData(data, 'onData');
+      // Don't clear here - let beforeinput check and clear it
     });
   }
 
